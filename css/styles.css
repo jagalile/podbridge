@@ -366,6 +366,12 @@ code {
 .program-header-link:hover { text-decoration: underline; }
 
 .episode-list { display: flex; flex-direction: column; gap: 10px; }
+.load-more-sentinel {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 40px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
 .episode-row {
   display: flex;
   align-items: center;

@@ -172,19 +172,52 @@ async function openProgram(program) {
   heroEl.hidden = true;
   resultsEl.hidden = true;
 
-  state.program = { open: true, status: "loading", error: "", info: program, episodes: [] };
+  state.program = {
+    open: true, status: "loading", error: "", info: program, episodes: [],
+    page: 1, hasMore: false, loadingMore: false,
+  };
   renderProgram();
 
   try {
-    const { info, episodes } = await ivoox.getProgram(program.url);
+    const { info, episodes, hasMore } = await ivoox.getProgram(program.url, { page: 1 });
     state.program.info = { ...program, ...info };
     state.program.episodes = episodes;
+    state.program.hasMore = hasMore;
     state.program.status = episodes.length ? "success" : "empty";
   } catch (err) {
     state.program.status = "error";
     state.program.error = err.message;
   }
   renderProgram();
+}
+
+// Scroll infinito: se observa un centinela al final de la lista y, cuando
+// entra en el viewport, se pide la siguiente página de episodios de iVoox
+// (pagina cambiando el número final de la URL del programa).
+const loadMoreObserver = new IntersectionObserver(
+  (entries) => { if (entries[0].isIntersecting) loadMoreEpisodes(); },
+  { rootMargin: "400px" },
+);
+
+async function loadMoreEpisodes() {
+  const p = state.program;
+  if (p.loadingMore || !p.hasMore || !p.info) return;
+  p.loadingMore = true;
+  renderLoadMoreIndicator();
+
+  try {
+    const nextPage = p.page + 1;
+    const { episodes, hasMore } = await ivoox.getProgram(p.info.url, { page: nextPage });
+    p.episodes = [...p.episodes, ...episodes];
+    p.page = nextPage;
+    p.hasMore = hasMore && episodes.length > 0;
+  } catch (err) {
+    toast(`No se han podido cargar más episodios: ${err.message}`, "error");
+    p.hasMore = false; // evita reintentos en bucle si el fallo es persistente
+  } finally {
+    p.loadingMore = false;
+    renderProgram();
+  }
 }
 
 function closeProgramView() {
@@ -223,6 +256,23 @@ function renderProgram() {
   for (const ep of episodes) {
     programEpisodesEl.appendChild(renderEpisodeRow(ep, handleEpisodeAction, showEpisodeInfo));
   }
+
+  loadMoreObserver.disconnect();
+  if (state.program.hasMore) {
+    const sentinel = document.createElement("div");
+    sentinel.className = "load-more-sentinel";
+    programEpisodesEl.appendChild(sentinel);
+    renderLoadMoreIndicator();
+    loadMoreObserver.observe(sentinel);
+  }
+}
+
+function renderLoadMoreIndicator() {
+  const sentinel = programEpisodesEl.querySelector(".load-more-sentinel");
+  if (!sentinel) return;
+  sentinel.innerHTML = state.program.loadingMore
+    ? `<span class="spinner"></span> Cargando más episodios…`
+    : "";
 }
 
 // ---------------------------------------------------------------------------

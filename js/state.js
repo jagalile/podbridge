@@ -26,6 +26,9 @@ export const state = {
     error: "",
     info: null,
     episodes: [],
+    page: 1,
+    hasMore: false,
+    loadingMore: false,
   },
   // episodeId -> { status: idle|downloading|uploading|done|error, progress, error }
   jobs: new Map(),

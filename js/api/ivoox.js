@@ -19,12 +19,13 @@ export async function search(query, type, { signal } = {}) {
   return data.results || [];
 }
 
-export async function getProgram(programUrl, { signal } = {}) {
+export async function getProgram(programUrl, { page = 1, signal } = {}) {
   const u = encodeURIComponent(programUrl);
-  const data = await getJson(`/ivoox/program?url=${u}`, { signal });
+  const data = await getJson(`/ivoox/program?url=${u}&page=${page}`, { signal });
   return {
     info: data.info,
     episodes: data.episodes || [],
+    hasMore: !!data.hasMore,
   };
 }
 

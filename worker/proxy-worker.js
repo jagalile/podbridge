@@ -186,7 +186,46 @@ function parseDurationToSeconds(str) {
   return null;
 }
 
-const ORIGINALS_RE = /mini-badge-originals|ivoox\s*originals?/i;
+// ---------------------------------------------------------------------------
+// iVoox Originals
+//
+// A diferencia de lo que parecía razonable asumir, iVoox NO marca de
+// ninguna forma detectable (badge, clase, texto) qué programa es Originals
+// ni en la tarjeta de búsqueda ni en la página del propio programa. La
+// única lista fiable es su catálogo dedicado (`_ik_originals_1.html`), que
+// sí trae los ids de programa (`_sq_f<id>`) de los ~175 shows Originals.
+// Se cachea unas horas con la Cache API de Workers para no tener que
+// descargar esa página (~400 KB) en cada búsqueda.
+// ---------------------------------------------------------------------------
+
+const ORIGINALS_CATALOG_URL = "https://www.ivoox.com/_ik_originals_1.html";
+const ORIGINALS_CACHE_TTL = 60 * 60 * 6; // 6 horas
+
+async function getOriginalsProgramIds() {
+  const cache = caches.default;
+  const cacheKey = new Request("https://podbridge-internal.invalid/originals-ids");
+
+  const cached = await cache.match(cacheKey);
+  if (cached) return new Set(await cached.json());
+
+  const ids = new Set();
+  try {
+    const res = await fetchIvoox(ORIGINALS_CATALOG_URL);
+    const html = await res.text();
+    const idRe = /_sq_f(\d+)_/g;
+    let m;
+    while ((m = idRe.exec(html))) ids.add(m[1]);
+  } catch {
+    // Si el catálogo falla, seguimos sin marcar Originals en vez de romper
+    // la búsqueda entera por esto.
+  }
+
+  const cacheResponse = new Response(JSON.stringify([...ids]), {
+    headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${ORIGINALS_CACHE_TTL}` },
+  });
+  await cache.put(cacheKey, cacheResponse);
+  return ids;
+}
 
 // ---------------------------------------------------------------------------
 // Tarjetas de PROGRAMA (páginas de búsqueda `_sw_..._1.html`)
@@ -208,7 +247,7 @@ function splitCards(html, marker, maxLen = 4000) {
   return cards;
 }
 
-function parseProgramCards(html) {
+function parseProgramCards(html, originalsIds) {
   const results = [];
   for (const chunk of splitCards(html, "modulo-type-programa")) {
     const nameM = chunk.match(/itemprop="name"\s+content="([^"]+)"/);
@@ -218,14 +257,15 @@ function parseProgramCards(html) {
     const descM = chunk.match(/itemprop="description"\s+content="([^"]*)"/);
     const imgM = chunk.match(/<img[^>]*data-src="([^"]+)"[^>]*class="main[^"]*"/);
     const idM = urlM[1].match(/_sq_f(\d+)/);
+    const id = idM ? idM[1] : null;
 
     results.push({
-      id: `program-${idM ? idM[1] : urlM[1]}`,
+      id: `program-${id || urlM[1]}`,
       type: "program",
       title: decodeHtmlEntities(nameM[1]),
       url: urlM[1],
       image: imgM ? upgradeImage(imgM[1]) : null,
-      isOriginal: ORIGINALS_RE.test(chunk),
+      isOriginal: id ? originalsIds.has(id) : false,
       // No hay un "autor" limpio en la tarjeta de búsqueda; usamos el
       // arranque de la descripción del programa como subtítulo.
       author: descM ? decodeHtmlEntities(descM[1]).slice(0, 100).trim() : "",
@@ -249,7 +289,24 @@ function parseProgramCards(html) {
 // iVoox no expone aquí una fecha absoluta (dd/mm/aaaa), solo esta relativa.
 // ---------------------------------------------------------------------------
 
-function parseEpisodeCards(html) {
+// Secciones que iVoox añade DESPUÉS de la lista real de episodios en la
+// misma página (recomendaciones de otros programas, "También te puede
+// gustar"…). Reutilizan estilos parecidos a las tarjetas de episodio, así
+// que si no se recorta la página antes de parsear, sus enlaces colaban
+// como si fueran episodios de este programa.
+const EPISODE_LIST_END_MARKERS = ["También te puede gustar", "Recomendado"];
+
+function cropToEpisodeList(html) {
+  let end = html.length;
+  for (const marker of EPISODE_LIST_END_MARKERS) {
+    const idx = html.indexOf(marker);
+    if (idx !== -1) end = Math.min(end, idx);
+  }
+  return html.slice(0, end);
+}
+
+function parseEpisodeCards(rawHtml) {
+  const html = cropToEpisodeList(rawHtml);
   const titleRe = /<a\s+href="([^"]+)"\s+class="font-size-14[^"]*text-truncate[^"]*"[^>]*>\s*([^<]+?)\s*<\/a>/g;
   const playRe = /<a\s+href="([^"]+)"\s+class="round-play\s+(btn-fans|btn-primary)"/g;
   const imgTagPattern = '<img[^>]+src="([^"]+)"[^>]+alt="([^"]*)"';
@@ -276,6 +333,7 @@ function parseEpisodeCards(html) {
   while ((tm = titleRe.exec(html))) {
     const href = tm[1];
     if (seen.has(href)) continue;
+    if (!/_rf_\d+/.test(href)) continue; // no es un enlace a un episodio (p.ej. un programa recomendado)
     seen.add(href);
 
     // La miniatura del episodio queda justo antes de su título en el HTML.
@@ -324,7 +382,7 @@ function formatDescription(raw) {
     .join("\n\n");
 }
 
-function parseProgramInfo(html, programUrl) {
+function parseProgramInfo(html, programUrl, originalsIds) {
   const breadcrumbM = html.match(
     /aria-current="page"\s+class="nuxt-link-exact-active nuxt-link-active"[^>]*>\s*([^<]+?)\s*<\/a>/,
   );
@@ -337,13 +395,14 @@ function parseProgramInfo(html, programUrl) {
 
   const ogImageM = html.match(/property="og:image"\s+content="([^"]+)"/i);
   const ogDescM = html.match(/property="og:description"\s+content="([^"]*)"/i);
+  const idM = programUrl.match(/_sq_f(\d+)/);
 
   return {
     title,
     image: ogImageM ? upgradeImage(ogImageM[1]) : null,
     author: "",
     description: ogDescM ? decodeHtmlEntities(ogDescM[1]).trim() : "",
-    isOriginal: ORIGINALS_RE.test(html),
+    isOriginal: idM ? originalsIds.has(idM[1]) : false,
     url: programUrl,
   };
 }
@@ -358,9 +417,9 @@ async function handleSearch(url, env) {
   if (!q) return errorResponse("Falta el parámetro q", env, 400);
 
   const searchUrl = `https://www.ivoox.com/podcast-${slugify(q)}_sw_1_1_1.html`;
-  const res = await fetchIvoox(searchUrl);
+  const [res, originalsIds] = await Promise.all([fetchIvoox(searchUrl), getOriginalsProgramIds()]);
   const html = await res.text();
-  const programs = parseProgramCards(html);
+  const programs = parseProgramCards(html, originalsIds);
 
   if (type === "program") {
     return json({ results: programs, sourceUrl: searchUrl }, env);
@@ -401,21 +460,35 @@ async function handleSearch(url, env) {
 // GET /ivoox/program?url=  → info del programa + lista de episodios
 // ---------------------------------------------------------------------------
 
+// iVoox pagina los episodios de un programa cambiando el último número de
+// la URL (…_sq_f<id>_1.html → …_sq_f<id>_2.html, _3.html…). 20 episodios
+// por página, verificado contra HTML real.
+const EPISODES_PER_PAGE = 20;
+
+function programPageUrl(programUrl, page) {
+  if (page <= 1) return programUrl;
+  return programUrl.replace(/_(\d+)\.html$/, `_${page}.html`);
+}
+
 async function handleProgram(url, env) {
   const programUrl = url.searchParams.get("url");
   if (!programUrl) return errorResponse("Falta el parámetro url", env, 400);
+  const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
 
-  const res = await fetchIvoox(programUrl);
+  const [res, originalsIds] = await Promise.all([
+    fetchIvoox(programPageUrl(programUrl, page)),
+    getOriginalsProgramIds(),
+  ]);
   const html = await res.text();
 
-  const info = parseProgramInfo(html, programUrl);
+  const info = parseProgramInfo(html, programUrl, originalsIds);
   const episodes = parseEpisodeCards(html).map((ep) => ({
     ...ep,
     program: info.title,
     isOriginal: info.isOriginal,
   }));
 
-  return json({ info, episodes }, env);
+  return json({ info, episodes, page, hasMore: episodes.length >= EPISODES_PER_PAGE }, env);
 }
 
 // ---------------------------------------------------------------------------
