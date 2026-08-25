@@ -18,24 +18,30 @@ export async function login(email, password) {
 
 /**
  * Sube un episodio a Archivos de Pocket Casts.
+ *
+ * El fichero se envía como cuerpo crudo de la petición (no multipart/
+ * FormData): así el Worker puede retransmitirlo a Pocket Casts en
+ * streaming, sin tener que cargar el episodio entero en memoria — con
+ * FormData no hay más remedio que bufferizarlo, y para episodios largos
+ * (varias horas) eso podía agotar la memoria del Worker y dejar la subida
+ * colgada sin avisar.
+ *
  * @param {Blob} fileBlob audio ya descargado
  * @param {{title:string, contentType:string}} meta
  * @param {string} token
  * @param {(progress:number)=>void} onProgress 0..1, solo durante la subida
  */
 export async function uploadFile(fileBlob, meta, token, onProgress) {
-  const form = new FormData();
-  form.append("token", token);
-  form.append("title", meta.title);
-  form.append("contentType", meta.contentType || "audio/mpeg");
-  form.append("file", fileBlob, "episode.mp3");
+  const contentType = meta.contentType || "audio/mpeg";
+  const params = new URLSearchParams({ title: meta.title, contentType });
 
   // fetch() no expone progreso de subida de forma nativa; usamos XHR para
-  // poder pintar una barra de progreso real mientras el Worker retransmite
-  // el fichero hacia el almacenamiento de Pocket Casts.
+  // poder pintar una barra de progreso real mientras se envía el fichero.
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${resolveBase()}/pocketcasts/upload`);
+    xhr.open("POST", `${resolveBase()}/pocketcasts/upload?${params.toString()}`);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("Content-Type", contentType);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
     };
@@ -50,7 +56,7 @@ export async function uploadFile(fileBlob, meta, token, onProgress) {
       }
     };
     xhr.onerror = () => reject(new Error("No se pudo contactar con el Worker para subir el episodio."));
-    xhr.send(form);
+    xhr.send(fileBlob);
   });
 }
 

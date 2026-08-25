@@ -364,8 +364,23 @@ code {
   border-radius: var(--radius-m);
   padding: 14px 16px;
 }
-.episode-row-main { min-width: 0; }
+.episode-row-cover { width: 56px; height: 56px; border-radius: var(--radius-s); flex: none; }
+.episode-row-cover .badge { font-size: 8.5px; padding: 2px 5px; top: 3px; left: 3px; }
+.episode-row-main { min-width: 0; flex: 1; }
 .episode-row .episode-title { white-space: normal; font-size: 14px; }
+
+.info-btn {
+  width: 34px; height: 34px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  transition: color .15s ease, border-color .15s ease;
+}
+.info-btn:hover { color: var(--text); border-color: var(--accent); }
 
 /* ===== Skeletons ===== */
 .skeleton-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
@@ -374,13 +389,22 @@ code {
 .skeleton-line { height: 12px; border-radius: 6px; }
 @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
 
-/* ===== Settings panel ===== */
+/* ===== Settings panel =====
+   IMPORTANTE: estos overlays se muestran/ocultan con la clase .is-open, NO
+   con el atributo `hidden`. Si alguna vez añades aquí una regla `display`
+   incondicional en un selector que también pueda llevar `[hidden]`, el CSS
+   de autor gana SIEMPRE sobre la hoja de estilos del user-agent y el
+   `hidden` deja de tener efecto visual (aunque el DOM lo siga reflejando
+   correctamente) — es justo el bug que tenía este panel antes. */
 .backdrop {
   position: fixed; inset: 0;
   background: rgba(10, 9, 7, .45);
   backdrop-filter: blur(2px);
   z-index: 40;
+  display: none;
 }
+.backdrop.is-open { display: block; }
+
 .settings-panel {
   position: fixed;
   top: 0; right: 0;
@@ -390,10 +414,10 @@ code {
   border-left: 1px solid var(--border);
   box-shadow: var(--shadow-l);
   z-index: 50;
-  display: flex;
+  display: none;
   flex-direction: column;
-  animation: slide-in .22s ease;
 }
+.settings-panel.is-open { display: flex; animation: slide-in .22s ease; }
 @keyframes slide-in { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 .settings-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -425,6 +449,36 @@ code {
   padding: 8px 10px;
   margin-top: 8px;
 }
+
+/* ===== Popup de episodio ===== */
+.episode-modal {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(85vh, 720px);
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-l);
+  z-index: 55;
+  display: none;
+  padding: 0 0 24px;
+}
+.episode-modal.is-open { display: block; animation: modal-in .18s ease; }
+@keyframes modal-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+.modal-close { position: absolute; top: 14px; right: 14px; background: var(--bg-elevated); z-index: 1; }
+.episode-modal-body { display: flex; flex-direction: column; }
+.episode-modal-cover { width: 100%; aspect-ratio: 16/7; object-fit: cover; background: var(--bg-sunken); border-radius: var(--radius-l) var(--radius-l) 0 0; }
+.episode-modal-content { padding: 20px 24px 0; }
+.episode-modal-program { font-size: 11.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; font-weight: 700; margin: 0 0 6px; }
+.episode-modal-title { font-family: var(--font-display); font-size: 19px; font-weight: 800; margin: 0 0 10px; line-height: 1.3; }
+.episode-modal-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.episode-modal-meta { font-size: 13px; color: var(--text-muted); margin: 0 0 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+.episode-modal-description { font-size: 14px; line-height: 1.65; color: var(--text); white-space: pre-line; }
+.episode-modal-description:empty::before,
+.episode-modal-description.is-empty::before { content: "No hay descripción disponible para este episodio."; color: var(--text-faint); font-style: italic; }
+.episode-modal-footer { padding: 20px 24px 0; }
 
 /* ===== Toasts ===== */
 .toasts {

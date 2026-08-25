@@ -23,7 +23,7 @@ export function renderProgramCard(program, onOpen) {
   return node;
 }
 
-export function renderEpisodeCard(episode, onAction) {
+export function renderEpisodeCard(episode, onAction, onInfo) {
   const node = clone("tpl-episode-card");
   const img = node.querySelector("img");
   img.src = episode.image || FALLBACK_COVER;
@@ -35,16 +35,40 @@ export function renderEpisodeCard(episode, onAction) {
   node.querySelector(".episode-title").textContent = episode.title;
   node.querySelector(".episode-title").title = episode.title;
   node.querySelector(".episode-meta").innerHTML = metaHtml(episode);
-  node.querySelector(".episode-actions").appendChild(actionButton(episode, onAction));
+  const actions = node.querySelector(".episode-actions");
+  if (onInfo) actions.appendChild(infoButton(episode, onInfo));
+  actions.appendChild(actionButton(episode, onAction));
   return node;
 }
 
-export function renderEpisodeRow(episode, onAction) {
+export function renderEpisodeRow(episode, onAction, onInfo) {
   const node = clone("tpl-episode-row");
+  const img = node.querySelector("img");
+  img.src = episode.image || FALLBACK_COVER;
+  img.alt = episode.title;
+  img.onerror = () => { img.src = FALLBACK_COVER; };
+  if (episode.isOriginal) node.querySelector(".badge-original").hidden = false;
+
   node.querySelector(".episode-title").textContent = episode.title;
   node.querySelector(".episode-meta").innerHTML = metaHtml(episode);
-  node.querySelector(".episode-actions").appendChild(actionButton(episode, onAction));
+  const actions = node.querySelector(".episode-actions");
+  if (onInfo) actions.appendChild(infoButton(episode, onInfo));
+  actions.appendChild(actionButton(episode, onAction));
   return node;
+}
+
+function infoButton(episode, onInfo) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "info-btn";
+  btn.title = "Más información";
+  btn.setAttribute("aria-label", "Más información sobre este episodio");
+  btn.textContent = "ⓘ";
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onInfo(episode);
+  });
+  return btn;
 }
 
 function metaHtml(episode) {
@@ -57,7 +81,7 @@ function metaHtml(episode) {
   return html;
 }
 
-function actionButton(episode, onAction) {
+export function actionButton(episode, onAction) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "action-btn";

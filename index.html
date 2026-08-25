@@ -78,9 +78,11 @@
     </footer>
   </div>
 
+  <!-- ===== Fondo compartido por el panel de ajustes y el popup de episodio ===== -->
+  <div id="backdrop" class="backdrop"></div>
+
   <!-- ===== Panel de ajustes / credenciales ===== -->
-  <div id="settings-backdrop" class="backdrop" hidden></div>
-  <aside id="settings-panel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+  <aside id="settings-panel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="settings-head">
       <h2 id="settings-title">Ajustes</h2>
       <button id="close-settings" class="icon-btn" type="button" aria-label="Cerrar ajustes">
@@ -129,6 +131,14 @@
     </div>
   </aside>
 
+  <!-- ===== Popup de información de episodio ===== -->
+  <div id="episode-modal" class="episode-modal" role="dialog" aria-modal="true" aria-labelledby="episode-modal-title">
+    <button id="close-episode-modal" class="icon-btn modal-close" type="button" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <div id="episode-modal-body" class="episode-modal-body"></div>
+  </div>
+
   <!-- ===== Toasts ===== -->
   <div id="toasts" class="toasts" aria-live="assertive" aria-atomic="true"></div>
 
@@ -163,6 +173,10 @@
 
   <template id="tpl-episode-row">
     <div class="episode-row">
+      <div class="program-cover episode-row-cover">
+        <img loading="lazy" alt="" />
+        <span class="badge badge-original" hidden>Originals</span>
+      </div>
       <div class="episode-row-main">
         <h4 class="episode-title"></h4>
         <p class="episode-meta"></p>

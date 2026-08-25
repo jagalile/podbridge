@@ -4,7 +4,9 @@ import * as pocketcasts from "./api/pocketcasts.js";
 import { runEpisodeJob } from "./download.js";
 import { toast } from "./components/toast.js";
 import { skeletonGrid, idleState, emptyState, errorState, proxyMissingState } from "./components/states.js";
-import { renderProgramCard, renderEpisodeCard, renderEpisodeRow, applyJobState } from "./components/cards.js";
+import { renderProgramCard, renderEpisodeCard, renderEpisodeRow, applyJobState, actionButton } from "./components/cards.js";
+import { openOverlay, closeOverlay } from "./components/overlay.js";
+import { openEpisodeModal } from "./components/episodeModal.js";
 import { debounce } from "./utils.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -19,22 +21,17 @@ const programEpisodesEl = $("#program-episodes");
 // Settings panel
 // ---------------------------------------------------------------------------
 const settingsPanel = $("#settings-panel");
-const settingsBackdrop = $("#settings-backdrop");
 
 function openSettings() {
-  settingsPanel.hidden = false;
-  settingsBackdrop.hidden = false;
   $("#proxy-url").value = state.settings.proxyUrl;
+  openOverlay(settingsPanel);
 }
 function closeSettings() {
-  settingsPanel.hidden = true;
-  settingsBackdrop.hidden = true;
+  closeOverlay();
 }
 $("#open-settings").addEventListener("click", openSettings);
 $("#pc-status-btn").addEventListener("click", openSettings);
 $("#close-settings").addEventListener("click", closeSettings);
-settingsBackdrop.addEventListener("click", closeSettings);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings(); });
 
 $("#save-proxy").addEventListener("click", () => {
   const value = $("#proxy-url").value;
@@ -161,7 +158,7 @@ function renderResults() {
     if (item.type === "program") {
       wrap.appendChild(renderProgramCard(item, openProgram));
     } else {
-      wrap.appendChild(renderEpisodeCard(item, handleEpisodeAction));
+      wrap.appendChild(renderEpisodeCard(item, handleEpisodeAction, showEpisodeInfo));
     }
   }
   resultsEl.appendChild(wrap);
@@ -221,8 +218,15 @@ function renderProgram() {
 
   programEpisodesEl.innerHTML = "";
   for (const ep of episodes) {
-    programEpisodesEl.appendChild(renderEpisodeRow(ep, handleEpisodeAction));
+    programEpisodesEl.appendChild(renderEpisodeRow(ep, handleEpisodeAction, showEpisodeInfo));
   }
+}
+
+// ---------------------------------------------------------------------------
+// Popup de "+info" de episodio
+// ---------------------------------------------------------------------------
+function showEpisodeInfo(episode) {
+  openEpisodeModal(episode, handleEpisodeAction, actionButton);
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +270,19 @@ function render() {
     if (episode) applyJobState(btn, episode);
   });
 }
+
+// Refrescar/cerrar la pestaña corta de raíz cualquier descarga o subida en
+// curso (es una petición del propio navegador, no se puede reanudar desde
+// aquí) — al menos avisamos para no perder el trabajo sin darse cuenta.
+window.addEventListener("beforeunload", (e) => {
+  const hasActiveJob = [...state.jobs.values()].some(
+    (j) => j.status === "downloading" || j.status === "uploading",
+  );
+  if (hasActiveJob) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
 
 subscribe(render);
 render();

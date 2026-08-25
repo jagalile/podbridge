@@ -239,16 +239,21 @@ function parseProgramCards(html) {
 // los exclusivos de pago (programa de "Fans" de iVoox) — es la señal más
 // fiable de exclusividad, más fiable que buscar la palabra "exclusivo".
 // La duración va justo después del botón de play, en texto plano HH:MM:SS.
+// Entre el título y el botón de play van también, en este orden, la
+// descripción completa (`class="description mb-05"`) y la fecha en
+// formato relativo de iVoox ("Hoy", "Ayer"…, `class="...text-nowrap"`) —
+// iVoox no expone aquí una fecha absoluta (dd/mm/aaaa), solo esta relativa.
 // ---------------------------------------------------------------------------
 
 function parseEpisodeCards(html) {
   const titleRe = /<a\s+href="([^"]+)"\s+class="font-size-14[^"]*text-truncate[^"]*"[^>]*>\s*([^<]+?)\s*<\/a>/g;
   const playRe = /<a\s+href="([^"]+)"\s+class="round-play\s+(btn-fans|btn-primary)"/g;
   const imgTagPattern = '<img[^>]+src="([^"]+)"[^>]+alt="([^"]*)"';
+  const dateRe = /class="[^"]*text-gray[^"]*text-nowrap[^"]*"[^>]*>\s*([^<]{1,40}?)\s*<\/span>/g;
 
-  // href -> { isExclusive, duration } a partir del botón de play (puede
-  // estar muy lejos del título si la descripción del episodio es larga, así
-  // que se resuelve por separado y se cruza por href en vez de por cercanía).
+  // href -> { isExclusive, duration, index } a partir del botón de play
+  // (puede estar lejos del título si la descripción del episodio es larga,
+  // así que se resuelve por separado y se cruza por href, no por cercanía).
   const playInfo = new Map();
   let pm;
   while ((pm = playRe.exec(html))) {
@@ -257,6 +262,7 @@ function parseEpisodeCards(html) {
     playInfo.set(pm[1], {
       isExclusive: pm[2] === "btn-fans",
       duration: durM ? parseDurationToSeconds(durM[1]) : null,
+      index: pm.index,
     });
   }
 
@@ -273,8 +279,16 @@ function parseEpisodeCards(html) {
     const imgMatches = [...before.matchAll(new RegExp(imgTagPattern, "g"))];
     const lastImg = imgMatches[imgMatches.length - 1];
 
-    const idMatch = href.match(/_rf_(\d+)/);
     const info = playInfo.get(href) || {};
+    // Descripción y fecha viven entre el título y el botón de play de este
+    // mismo episodio; si no se localiza el botón, se acota a una ventana
+    // razonable para no arrastrar contenido del episodio siguiente.
+    const between = html.slice(tm.index, info.index ?? tm.index + 3000);
+    const descM = between.match(/class="description mb-05"[^>]*>([\s\S]*?)<\/div>/);
+    const dateMatches = [...between.matchAll(dateRe)];
+    const lastDate = dateMatches[dateMatches.length - 1];
+
+    const idMatch = href.match(/_rf_(\d+)/);
     const isExclusive = !!info.isExclusive;
     const absoluteUrl = resolveUrl(href);
     const title = decodeHtmlEntities(tm[2].trim()) || (lastImg ? decodeHtmlEntities(lastImg[2]) : href);
@@ -287,12 +301,23 @@ function parseEpisodeCards(html) {
       image: lastImg ? upgradeImage(lastImg[1]) : null,
       isOriginal: false, // se rellena por el llamante con el dato del programa
       isExclusive,
-      date: null, // iVoox solo da fechas relativas ("Hoy", "Ayer") aquí, poco útiles para mostrar
+      date: lastDate ? decodeHtmlEntities(lastDate[1].trim()) : null,
       duration: info.duration ?? null,
+      description: descM ? formatDescription(descM[1]) : "",
       downloadUrl: isExclusive ? null : absoluteUrl,
     });
   }
   return episodes;
+}
+
+/** Colapsa espacios dentro de cada párrafo pero conserva los saltos entre ellos. */
+function formatDescription(raw) {
+  return decodeHtmlEntities(raw)
+    .replace(/\r/g, "")
+    .split(/\n\s*\n/)
+    .map((p) => p.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function parseProgramInfo(html, programUrl) {
@@ -471,25 +496,27 @@ async function handlePocketCastsLogin(request, env) {
 // Pocket Casts — subida a Archivos (protobuf + S3 presigned URL)
 // ---------------------------------------------------------------------------
 
+/**
+ * El fichero llega como cuerpo crudo de la petición (no FormData): así se
+ * puede retransmitir en streaming directamente al PUT de S3 sin bufferizar
+ * el episodio entero en memoria del Worker. Con episodios largos (varias
+ * horas → cientos de MB) bufferizar todo el fichero podía agotar el límite
+ * de memoria del Worker y dejar la subida colgada sin ningún error visible.
+ */
 async function handlePocketCastsUpload(request, env) {
-  const form = await request.formData();
-  const token = form.get("token");
-  const title = form.get("title") || "Episodio";
-  const contentType = form.get("contentType") || "audio/mpeg";
-  const file = form.get("file");
+  const url = new URL(request.url);
+  const authHeader = request.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const title = url.searchParams.get("title") || "Episodio";
+  const contentType = url.searchParams.get("contentType") || "audio/mpeg";
+  const size = Number(request.headers.get("Content-Length") || 0);
 
   if (!token) return errorResponse("Falta el token de Pocket Casts", env, 401);
-  if (!file) return errorResponse("Falta el fichero de audio", env, 400);
+  if (!request.body || !size) return errorResponse("Falta el fichero de audio", env, 400);
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
   const id = crypto.randomUUID();
 
-  const requestBody = encodeFileUploadRequest({
-    uuid: id,
-    title: String(title),
-    size: bytes.byteLength,
-    contentType: String(contentType),
-  });
+  const requestBody = encodeFileUploadRequest({ uuid: id, title, size, contentType });
 
   const uploadReqRes = await fetch("https://api.pocketcasts.com/files/upload/request", {
     method: "POST",
@@ -507,10 +534,13 @@ async function handlePocketCastsUpload(request, env) {
     return errorResponse("Pocket Casts no devolvió una URL de subida válida", env, 502);
   }
 
+  // Streaming directo: el cuerpo de la petición entrante se retransmite tal
+  // cual al PUT de S3, sin pasar por memoria como un buffer completo.
   const putRes = await fetch(presignedUrl, {
     method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: bytes,
+    headers: { "Content-Type": contentType, "Content-Length": String(size) },
+    body: request.body,
+    duplex: "half",
   });
   if (!putRes.ok) {
     return errorResponse(`Falló la subida del audio al almacenamiento de Pocket Casts (${putRes.status})`, env, 502);
