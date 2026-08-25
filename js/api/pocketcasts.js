@@ -50,6 +50,28 @@ export async function uploadEpisodeFromIvoox(episodeUrl, meta, token, signal) {
 }
 
 /**
+ * Igual que uploadEpisodeFromIvoox(), pero para episodios grandes: el
+ * Worker NO descarga ni sube el audio (Cloudflare no consigue mantener
+ * fiable esa subida saliente con ficheros de varios cientos de MB — ver
+ * README → "Episodios muy grandes"). Se limita a resolver la URL real del
+ * mp3, consultar su tamaño y pedirle a Pocket Casts una URL de subida ya
+ * autorizada, y devuelve todo eso para que sea el servicio de relevo
+ * externo (ver api/relay.js) quien haga el streaming de verdad.
+ *
+ * @param {string} episodeUrl
+ * @param {{title:string, hasImage?:boolean}} meta
+ * @param {string} token
+ * @returns {Promise<{uuid:string, uploadUrl:string, audioUrl:string, contentType:string, size:number}>}
+ */
+export async function requestEpisodeUploadInit(episodeUrl, meta, token) {
+  return postJson(
+    "/pocketcasts/upload-episode-init",
+    { episodeUrl, title: meta.title, hasImage: !!meta.hasImage },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+}
+
+/**
  * Sube la portada de un episodio ya subido. Paso independiente y opcional:
  * si falla, el episodio se queda en Pocket Casts sin portada personalizada,
  * nada más — nunca hace fallar la subida principal.

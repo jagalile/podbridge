@@ -76,6 +76,8 @@ export default {
           return handlePocketCastsUsage(request, env);
         case "POST /pocketcasts/upload-episode":
           return handlePocketCastsUploadEpisode(request, env);
+        case "POST /pocketcasts/upload-episode-init":
+          return handlePocketCastsUploadEpisodeInit(request, env);
         case "POST /pocketcasts/upload-image":
           return handlePocketCastsUploadImage(request, env);
         default:
@@ -925,6 +927,74 @@ async function handlePocketCastsUploadEpisode(request, env) {
   }
 
   return json({ ok: true, uuid: id, title }, env);
+}
+
+/**
+ * Variante de handlePocketCastsUploadEpisode() para episodios grandes: NO
+ * descarga ni sube el audio — Cloudflare Workers no consigue mantener
+ * fiable esa subida saliente con ficheros de varios cientos de MB
+ * (confirmado con wrangler tail: la propia red de Cloudflare corta la
+ * petición con un 413 sintético — cabeceras `server: cloudflare` y
+ * `cf-ray`, nunca llega a Pocket Casts — pase lo que pase con cómo se
+ * construya el streaming del lado del Worker; ver README → "Episodios
+ * muy grandes").
+ *
+ * Se limita a resolver la URL real del mp3, consultar su tamaño con un
+ * HEAD (sin descargar nada) y pedirle a Pocket Casts una URL de subida ya
+ * autorizada — la respuesta es pequeña en los dos sentidos, así que no
+ * hay ningún cuerpo grande que le pase por delante al límite de
+ * Cloudflare. El streaming real de iVoox a Pocket Casts lo hace después
+ * el servicio de relevo externo (ver /relay-service), directamente desde
+ * el navegador, con la URL que devuelve esta función.
+ */
+async function handlePocketCastsUploadEpisodeInit(request, env) {
+  const authHeader = request.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  if (!token) return errorResponse("Falta el token de Pocket Casts", env, 401);
+
+  const { episodeUrl, title, hasImage } = await request.json();
+  if (!episodeUrl) return errorResponse("Falta la URL del episodio", env, 400);
+
+  const audioUrl = resolveAudioUrl(episodeUrl);
+  if (!audioUrl) {
+    return errorResponse(
+      "No se ha podido resolver el audio de este episodio (puede ser exclusivo o iVoox ha cambiado su web).",
+      env, 422,
+    );
+  }
+
+  const headRes = await fetch(audioUrl, {
+    method: "HEAD",
+    headers: { ...BROWSER_HEADERS, Referer: episodeUrl },
+  });
+  if (!headRes.ok) {
+    return errorResponse(`iVoox respondió ${headRes.status} al consultar el audio`, env, 502);
+  }
+  const size = Number(headRes.headers.get("Content-Length") || 0);
+  const contentType = headRes.headers.get("Content-Type") || "audio/mpeg";
+  if (!size) return errorResponse("iVoox no informó del tamaño del audio", env, 502);
+
+  const id = crypto.randomUUID();
+  const requestBody = encodeFileUploadRequest({
+    uuid: id, title: title || "Episodio", size, contentType, hasImage: !!hasImage,
+  });
+
+  const uploadReqRes = await fetch("https://api.pocketcasts.com/files/upload/request", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+    body: requestBody,
+  });
+  if (!uploadReqRes.ok) {
+    return errorResponse(`Pocket Casts rechazó la solicitud de subida (${uploadReqRes.status})`, env, uploadReqRes.status);
+  }
+
+  const responseBytes = new Uint8Array(await uploadReqRes.arrayBuffer());
+  const presignedUrl = decodeFileUploadResponseUrl(responseBytes);
+  if (!presignedUrl) {
+    return errorResponse("Pocket Casts no devolvió una URL de subida válida", env, 502);
+  }
+
+  return json({ ok: true, uuid: id, uploadUrl: presignedUrl, audioUrl, contentType, size }, env);
 }
 
 /**

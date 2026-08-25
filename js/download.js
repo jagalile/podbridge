@@ -1,10 +1,20 @@
 // Orquesta el flujo completo por episodio. El audio ya NO pasa por el
-// navegador: el propio Worker lo descarga de iVoox y lo sube a Pocket
-// Casts de servidor a servidor (ver uploadEpisodeFromIvoox) — Cloudflare
-// Workers limita a 100 MB el cuerpo de las peticiones que RECIBE, así que
-// reenviar un audio ya descargado (un episodio de ~5h ronda los 260-300
-// MB) no podía funcionar. Solo la portada, que siempre es pequeña, se
-// sigue descargando al navegador y subiendo desde aquí.
+// navegador: se sube de servidor a servidor, por una de estas dos vías
+// según el tamaño del episodio (ver LARGE_EPISODE_BYTES):
+//
+//   - Episodios normales (hasta ~100 MB): el propio Worker de Cloudflare
+//     lo descarga de iVoox y lo sube a Pocket Casts (uploadEpisodeFromIvoox).
+//   - Episodios grandes (más de ~100 MB): Cloudflare Workers no consigue
+//     mantener fiable una subida saliente tan larga (confirmado con
+//     wrangler tail — la propia red de Cloudflare corta la petición, no
+//     Pocket Casts ni nuestro código: ver README → "Episodios muy
+//     grandes"), así que el Worker solo pide la URL de subida
+//     (requestEpisodeUploadInit) y es un servicio aparte, fuera de
+//     Cloudflare (relayUpload, ver api/relay.js), quien hace el streaming
+//     real de iVoox a Pocket Casts.
+//
+// Solo la portada, que siempre es pequeña, se descarga al navegador y se
+// sube desde aquí en los dos casos.
 //
 // Todo queda reflejado en el store (jobs) para que la UI reaccione. Cada
 // job tiene su propio AbortController y se vigila su actividad: si pasa
@@ -15,14 +25,16 @@
 
 import { state, setJob } from "./state.js";
 import { imageProxyUrl } from "./api/ivoox.js";
-import { uploadEpisodeFromIvoox, uploadImage } from "./api/pocketcasts.js";
-import { uuid } from "./utils.js";
+import { uploadEpisodeFromIvoox, uploadImage, requestEpisodeUploadInit } from "./api/pocketcasts.js";
+import { relayUpload } from "./api/relay.js";
+import { uuid, LARGE_EPISODE_BYTES } from "./utils.js";
 
 // Reparto del progreso 0..1 mostrado en la UI según haya o no portada que
-// subir. La fase "uploadEpisode" (descarga+subida dentro del Worker) es
-// una única petición sin progreso en bytes real, así que se muestra como
-// indeterminada en vez de fingir un porcentaje que no se corresponde con
-// nada — ver job.indeterminate en cards.js.
+// subir. La fase "uploadEpisode" (audio de iVoox a Pocket Casts, por
+// Worker o por el relevo externo) es una única petición sin progreso en
+// bytes real, así que se muestra como indeterminada en vez de fingir un
+// porcentaje que no se corresponde con nada — ver job.indeterminate en
+// cards.js.
 const WEIGHTS_WITH_IMAGE = { downloadImage: 0.15, uploadEpisode: 0.7, uploadImage: 0.15 };
 const WEIGHTS_NO_IMAGE = { downloadImage: 0, uploadEpisode: 1, uploadImage: 0 };
 
@@ -54,6 +66,7 @@ setInterval(() => {
 
 export async function runEpisodeJob(episode) {
   const id = episode.id;
+  const isLarge = (episode.sizeBytes || 0) > LARGE_EPISODE_BYTES;
 
   if (episode.isExclusive) {
     setJob(id, { status: "error", error: "Episodio exclusivo: iVoox no permite descargarlo." });
@@ -69,6 +82,13 @@ export async function runEpisodeJob(episode) {
   }
   if (!state.settings.proxyUrl) {
     setJob(id, { status: "error", error: "Configura la URL del Worker en Ajustes." });
+    return;
+  }
+  if (isLarge && !state.settings.relayUrl) {
+    setJob(id, {
+      status: "error",
+      error: "Episodio de más de 100 MB: configura el servicio de relevo en Ajustes, o usa el botón de descarga manual y súbelo tú mismo desde la app de Pocket Casts.",
+    });
     return;
   }
 
@@ -108,12 +128,14 @@ export async function runEpisodeJob(episode) {
     const heartbeat = setInterval(touch, HEARTBEAT_MS);
     let result;
     try {
-      result = await uploadEpisodeFromIvoox(
-        episode.downloadUrl,
-        { title: episode.title, hasImage: !!imageBlob },
-        state.pocketcasts.token,
-        signal,
-      );
+      result = isLarge
+        ? await uploadAudioViaRelay(episode, imageBlob, signal)
+        : await uploadEpisodeFromIvoox(
+            episode.downloadUrl,
+            { title: episode.title, hasImage: !!imageBlob },
+            state.pocketcasts.token,
+            signal,
+          );
     } finally {
       clearInterval(heartbeat);
     }
@@ -144,6 +166,28 @@ export async function runEpisodeJob(episode) {
     controllers.delete(id);
     lastActivity.delete(id);
   }
+}
+
+/**
+ * Sube el audio de un episodio grande por el servicio de relevo externo
+ * (fuera de Cloudflare): primero le pide al Worker una URL de subida ya
+ * autorizada (petición pequeña, sin el audio), y luego es el relevo quien
+ * hace el streaming real de iVoox a Pocket Casts — el audio no pasa ni
+ * por el navegador ni por el Worker en ningún momento.
+ */
+async function uploadAudioViaRelay(episode, imageBlob, signal) {
+  const init = await requestEpisodeUploadInit(
+    episode.downloadUrl,
+    { title: episode.title, hasImage: !!imageBlob },
+    state.pocketcasts.token,
+  );
+  await relayUpload(
+    { audioUrl: init.audioUrl, uploadUrl: init.uploadUrl, contentType: init.contentType, size: init.size },
+    state.settings.relayUrl,
+    state.settings.relaySecret,
+    signal,
+  );
+  return { uuid: init.uuid };
 }
 
 async function downloadBinary(url, onProgress, signal) {

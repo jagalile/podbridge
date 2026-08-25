@@ -1,5 +1,5 @@
 import {
-  state, subscribe, saveProxyUrl, setWorkerStatus, setPocketCasts, logoutPocketCasts, getJob,
+  state, subscribe, saveProxyUrl, saveRelayUrl, saveRelaySecret, setWorkerStatus, setPocketCasts, logoutPocketCasts, getJob,
   isFavorite, toggleFavorite, recordUpload,
   rememberMeSupported, persistPocketCastsSession, restorePersistedPocketCastsSession,
   exportData, importData, setUsage,
@@ -31,6 +31,8 @@ const settingsPanel = $("#settings-panel");
 
 function openSettings() {
   $("#proxy-url").value = state.settings.proxyUrl;
+  $("#relay-url").value = state.settings.relayUrl;
+  $("#relay-secret").value = state.settings.relaySecret;
   openOverlay(settingsPanel);
 }
 function closeSettings() {
@@ -78,6 +80,19 @@ $("#save-proxy").addEventListener("click", () => {
   setTimeout(() => { status.textContent = ""; }, 2500);
   render();
   checkWorker();
+});
+
+$("#save-relay").addEventListener("click", () => {
+  const url = $("#relay-url").value;
+  if (url && !/^https?:\/\//.test(url)) {
+    toast("La URL del servicio de relevo debe empezar por https://", "error");
+    return;
+  }
+  saveRelayUrl(url);
+  saveRelaySecret($("#relay-secret").value);
+  const status = $("#relay-status");
+  status.textContent = url ? "Guardado ✓" : "";
+  setTimeout(() => { status.textContent = ""; }, 2500);
 });
 
 /** Comprueba si el Worker configurado responde (GET /health). */

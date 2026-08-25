@@ -1,0 +1,13 @@
+{
+  "name": "podbridge-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Servicio de relevo para episodios grandes de PodBridge — ver README.md de esta carpeta.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}

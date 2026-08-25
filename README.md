@@ -55,14 +55,15 @@ ninguna de las dos.
 **Descarga y subida**
 - Un solo botón por episodio: el Worker descarga el audio de iVoox y lo
   sube a Archivos de Pocket Casts de servidor a servidor — el audio en sí
-  nunca pasa por tu navegador ni por tu conexión. Funciona bien para la
-  gran mayoría de episodios; los muy largos (varias horas, ~250+ MB)
-  todavía pueden fallar — ver
-  [Episodios muy grandes](#cómo-funciona-el-worker-por-dentro).
-- Para esos episodios grandes, un botón adicional de "descargar mp3"
-  (junto al de información) lo baja directo al navegador para que lo
-  subas tú mismo desde la app de Pocket Casts — no depende del Worker
-  para la parte que falla, así que siempre funciona.
+  nunca pasa por tu navegador ni por tu conexión.
+- Los episodios muy largos (más de 100 MB) van por una vía distinta —
+  Cloudflare Workers no consigue mantener fiable esa subida con ficheros
+  tan grandes — usando un servicio de relevo aparte que sí puede, si lo
+  has desplegado (opcional). Ver
+  [Episodios muy grandes](#episodios-muy-grandes-varios-cientos-de-mb).
+- Con o sin ese servicio configurado, un botón adicional de "descargar
+  mp3" (junto al de información) baja el audio directo al navegador para
+  que lo subas tú mismo desde la app de Pocket Casts.
 - Sube también la portada del episodio como imagen personalizada del
   fichero en Pocket Casts (si falla, el episodio se sube igualmente, solo
   que sin portada propia).
@@ -193,6 +194,13 @@ Abre la web publicada → icono de ajustes:
 - **URL del Worker**: pega la URL de `wrangler` del paso 1.
 - **Cuenta de Pocket Casts**: tu email y contraseña.
 
+### 4. (Opcional) Desplegar el servicio de relevo para episodios grandes
+
+Sin este paso, todo funciona igual salvo que los episodios de más de
+100 MB no ofrecen el botón automático de subida (solo la descarga manual
+para subirlos tú mismo). Paso a paso completo en
+[Episodios muy grandes → Desplegar el servicio de relevo](#episodios-muy-grandes-varios-cientos-de-mb).
+
 ---
 
 ## Uso
@@ -219,6 +227,7 @@ de datos ni backend propio. Qué se guarda, dónde y por qué:
 | Dato | Dónde | Cifrado | Notas |
 |---|---|---|---|
 | URL del Worker | `localStorage` | — | No es sensible |
+| URL y secreto del servicio de relevo | `localStorage` | — | El secreto no es una credencial de Pocket Casts, pero protege ese servicio — no se incluye en la exportación de datos |
 | Favoritos | `localStorage` | — | No es sensible |
 | Episodios ya subidos | `localStorage` | — | No es sensible |
 | Token de Pocket Casts (sesión activa) | `sessionStorage` | — | Se borra al cerrar la pestaña |
@@ -258,7 +267,8 @@ olvidar la sesión recordada en cualquier momento, basta con desactivarlo.
 | `GET /ivoox/raw?url=` | HTML crudo de una URL de iVoox, solo para depurar el scraper |
 | `POST /pocketcasts/login` | Login contra Pocket Casts, devuelve el token de sesión |
 | `GET /pocketcasts/usage` | Espacio usado/disponible en Archivos (bytes) |
-| `POST /pocketcasts/upload-episode` | Descarga el audio de iVoox y lo sube a Archivos, del todo en el Worker |
+| `POST /pocketcasts/upload-episode` | Episodios de hasta 100 MB: descarga el audio de iVoox y lo sube a Archivos, del todo en el Worker |
+| `POST /pocketcasts/upload-episode-init` | Episodios de más de 100 MB: solo consigue la URL de subida, para el servicio de relevo (ver "Episodios muy grandes") |
 | `POST /pocketcasts/upload-image` | Sube la portada de un episodio ya subido |
 
 El tamaño de cada episodio que se ve en la lista sale de una petición
@@ -344,35 +354,85 @@ subiendo desde el navegador con progreso real.
 
 ### Episodios muy grandes (varios cientos de MB)
 
-**Estado actual: sin resolver del todo.** Con episodios de varias horas
-(~250-280 MB), la subida automática de servidor a servidor sigue
-fallando en la práctica incluso después de varios ajustes de streaming
-(TransformStream, FixedLengthStream, bombeo manual respetando
-contrapresión) — el diagnóstico en producción (con `wrangler tail`,
-confirmado en dos intentos distintos) muestra el `PUT` hacia Pocket Casts
-cortándose con un "Network connection lost" siempre en el mismo punto,
-a los ~0.6 MB, algo demasiado repetible para ser una simple red
-inestable. El diagnóstico también confirmó que el problema está en la
-subida hacia Pocket Casts y no en la descarga desde iVoox: el botón de
-descarga manual (mismo código de descarga dentro del Worker) trae
-episodios de 280 MB sin ningún problema. Último intento probado: agrupar
-los trozos pequeños que van llegando de iVoox en bloques de varios MB
-antes de escribir hacia Pocket Casts, por si el corte tenía que ver con
-la cadencia de escrituras pequeñas y frecuentes. Sin confirmar todavía si
-esto lo arregla — si sigue fallando igual, el siguiente paso ya no es
-seguir ajustando el streaming dentro de Cloudflare Workers, sino mover
-esta subida en concreto fuera de Cloudflare.
+Con episodios de varias horas (~250-300 MB) la subida automática de
+servidor a servidor **desde el Worker de Cloudflare** no es fiable: se
+probaron varios ajustes de streaming sucesivos (`TransformStream`,
+`FixedLengthStream`, bombeo manual respetando contrapresión, agrupar los
+trozos en bloques más grandes antes de escribir) y todos fallaban en el
+mismo punto o muy cerca. El diagnóstico definitivo llegó con
+`wrangler tail` en producción: la respuesta del `PUT` fallido traía
+`server: cloudflare` y una cabecera `cf-ray`, con el cuerpo vacío — es
+decir, **la propia red de Cloudflare corta la petición saliente antes de
+que llegue a Pocket Casts**, no un rechazo de Pocket Casts ni un fallo de
+nuestro código. Cloudflare Workers limita a 100 MB el cuerpo de las
+peticiones en las que participa, y esto confirma que el límite aplica
+también a lo que un Worker manda hacia fuera con `fetch()`, no solo a lo
+que recibe — ningún ajuste de streaming dentro del Worker puede evitarlo
+porque el corte pasa en la red de Cloudflare, no en el código.
 
-Mientras tanto, la lista de episodios enseña un botón adicional de
-**descargar mp3** (icono de flecha hacia abajo, junto al de información)
-en cualquier episodio de más de ~100 MB: descarga el audio directo al
-navegador vía `/ivoox/audio` — una respuesta en streaming normal, que
-nunca ha tenido ninguno de estos problemas porque no es una petición
-saliente del Worker — y desde ahí puedes subirlo tú mismo a Pocket Casts
-usando su app oficial (Archivos → Subir un fichero), que al subir
-directamente desde tu dispositivo no pasa por ninguno de los límites de
-por medio. El botón normal de "Descargar y subir" se deja igualmente
-disponible por si la subida automática termina de arreglarse.
+Por eso, para episodios de más de `LARGE_EPISODE_BYTES` (100 MB, en
+`js/utils.js`) el audio se sube por una vía distinta que no pasa por
+Cloudflare en ningún momento:
+
+1. El navegador le pide al Worker una URL de subida ya autorizada
+   (`POST /pocketcasts/upload-episode-init`) — una petición pequeña,
+   solo metadatos: el Worker resuelve la URL real del mp3, consulta su
+   tamaño con un `HEAD` (sin descargar nada) y le pide a Pocket Casts una
+   URL de subida pre-firmada, igual que para un episodio normal.
+2. El navegador le pasa esa URL (más la del mp3 de iVoox) a un
+   **servicio de relevo aparte**, desplegado fuera de Cloudflare (ver
+   más abajo) — es él quien hace el streaming real de iVoox a Pocket
+   Casts, en una plataforma con un servidor HTTP normal detrás, sin el
+   límite de tamaño de petición que tiene Cloudflare Workers.
+
+Ese servicio nunca ve tu email, tu contraseña ni tu token de Pocket
+Casts — solo la URL pública del mp3 en iVoox y una URL de subida ya
+autorizada y de un solo uso. Es opcional: sin configurarlo, los episodios
+grandes simplemente no ofrecen el botón automático de subida y hay que
+usar la descarga manual (ver abajo). Con la subida normal (episodios de
+hasta 100 MB) esto no cambia nada — sigue yendo por el Worker, tal y
+como se explica arriba.
+
+#### Desplegar el servicio de relevo
+
+El código está en `/relay-service` (Node normal, sin dependencias de
+npm). Pensado para [Render.com](https://render.com), que tiene un plan
+gratuito con despliegue automático desde GitHub:
+
+1. En el [dashboard de Render](https://dashboard.render.com), **New →
+   Web Service** y conecta tu fork de este repositorio.
+2. **Root Directory**: `relay-service`.
+3. **Runtime**: Node. **Build Command**: déjalo vacío (no hay
+   dependencias que instalar). **Start Command**: `npm start`.
+4. **Instance Type**: Free.
+5. En **Environment**, añade dos variables:
+   - `RELAY_SECRET`: una cadena aleatoria larga que te inventes (por
+     ejemplo, generada con `openssl rand -hex 32`) — protege el
+     servicio para que no lo pueda usar cualquiera que descubra la URL.
+   - `ALLOWED_ORIGIN`: la URL de tu GitHub Pages (p. ej.
+     `https://tu-usuario.github.io`).
+6. Despliega. Cuando termine, Render te da una URL tipo
+   `https://tu-relay.onrender.com`.
+7. En PodBridge → Ajustes → "Relevo para episodios grandes", pega esa
+   URL y el mismo `RELAY_SECRET` que le pusiste a Render.
+
+El plan gratuito de Render "duerme" el servicio tras ~15 minutos sin
+uso — la primera petición después de eso tarda unos 30-50 segundos en
+arrancar (el navegador esperará ese tiempo en la fase de subida antes de
+que empiece a moverse nada; no hace falta hacer nada especial, solo
+tener paciencia esa primera vez).
+
+#### Vía manual, sin el servicio de relevo
+
+Con o sin el relevo configurado, la lista de episodios enseña un botón
+adicional de **descargar mp3** (icono de flecha hacia abajo, junto al de
+información) en cualquier episodio de más de 100 MB: descarga el audio
+directo al navegador vía `/ivoox/audio` — una respuesta en streaming
+normal, que nunca ha tenido ninguno de los problemas de arriba porque no
+es una petición saliente del Worker — y desde ahí puedes subirlo tú
+mismo a Pocket Casts usando su app oficial (Archivos → Subir un
+fichero), que al subir directamente desde tu dispositivo no pasa por
+ningún límite de Cloudflare.
 
 Como ninguna de las dos es una API pública documentada, **pueden cambiar
 sin aviso**. Si algo deja de funcionar (títulos raros, episodios que no
@@ -415,10 +475,16 @@ aparecen, login o subida rotos), el sitio donde mirar es siempre
 - **La subida de Archivos a Pocket Casts requiere una suscripción Pocket
   Casts Plus.** Sin ella, Pocket Casts rechaza la solicitud.
 - **Sin progreso en bytes durante la subida del audio.** Al hacerse
-  entera dentro del Worker (ver arriba), esa fase se muestra como
-  indeterminada en vez de un porcentaje — sí se cancela igual (a mano o
-  sola a los 45s sin señal de vida) y tiene un límite de seguridad de 15
-  minutos en el propio Worker.
+  entera dentro del Worker (o del servicio de relevo, para episodios
+  grandes), esa fase se muestra como indeterminada en vez de un
+  porcentaje — sí se cancela igual (a mano o sola a los 45s sin señal de
+  vida) y tiene un límite de seguridad de 15 minutos.
+- **El servicio de relevo para episodios grandes es opcional y es una
+  pieza más que mantener.** Sin desplegarlo, esos episodios (más de
+  100 MB) solo se pueden subir a mano (botón de descarga + subida manual
+  desde la app de Pocket Casts). Desplegado en el plan gratuito de
+  Render, además "duerme" tras ~15 min sin uso y la primera petición
+  después tarda 30-50s en arrancar.
 - **Persistencia solo local, sin sincronizar.** Favoritos, historial de
   subidas y la sesión recordada viven en `localStorage`/`IndexedDB` de
   este navegador — no se sincronizan entre dispositivos ni navegadores;
@@ -441,6 +507,7 @@ js/utils.js                       Formateo, helpers varios
 
 js/api/ivoox.js                   Cliente contra los endpoints /ivoox/* del Worker
 js/api/pocketcasts.js             Cliente contra los endpoints /pocketcasts/* del Worker
+js/api/relay.js                   Cliente del servicio de relevo (episodios grandes)
 js/api/proxy.js                   fetch genérico + comprobación de salud del Worker
 
 js/components/cards.js            Tarjetas de programa/episodio, botones de acción
@@ -451,6 +518,9 @@ js/components/toast.js            Notificaciones flotantes
 
 worker/proxy-worker.js            El puente: scraping de iVoox + protobuf de Pocket Casts
 worker/wrangler.toml              Configuración de despliegue del Worker
+
+relay-service/server.js           Streaming de audio para episodios grandes (fuera de Cloudflare)
+relay-service/package.json        Sin dependencias — solo Node 18+
 
 .github/workflows/deploy.yml      Publicación automática en GitHub Pages
 ```

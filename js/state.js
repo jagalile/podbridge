@@ -37,6 +37,11 @@ function loadJSON(key, fallback) {
 export const state = {
   settings: {
     proxyUrl: localStorage.getItem("pb.proxyUrl") || "",
+    // Servicio de relevo externo (fuera de Cloudflare), solo para
+    // episodios grandes — ver README → "Episodios muy grandes". Opcional:
+    // sin esto, esos episodios solo se pueden subir a mano.
+    relayUrl: localStorage.getItem("pb.relayUrl") || "",
+    relaySecret: localStorage.getItem("pb.relaySecret") || "",
   },
   worker: {
     status: "unknown", // unknown | checking | ok | error (solo si hay proxyUrl configurada)
@@ -102,6 +107,18 @@ export function saveProxyUrl(url) {
   state.settings.proxyUrl = url.trim().replace(/\/+$/, "");
   localStorage.setItem("pb.proxyUrl", state.settings.proxyUrl);
   state.worker.status = "unknown";
+  notify();
+}
+
+export function saveRelayUrl(url) {
+  state.settings.relayUrl = url.trim().replace(/\/+$/, "");
+  localStorage.setItem("pb.relayUrl", state.settings.relayUrl);
+  notify();
+}
+
+export function saveRelaySecret(secret) {
+  state.settings.relaySecret = secret.trim();
+  localStorage.setItem("pb.relaySecret", state.settings.relaySecret);
   notify();
 }
 
@@ -230,7 +247,11 @@ export function recordUpload(episode) {
 // serviría de nada en otro dispositivo — y meter cualquier cosa
 // relacionada con la cuenta en un fichero suelto es justo lo que no
 // interesa. Solo viajan favoritos, historial de subidas y la URL del
-// Worker (no es sensible, es solo la dirección de tu propio puente).
+// Worker (no es sensible, es solo la dirección de tu propio puente). El
+// secreto del servicio de relevo tampoco viaja nunca, por el mismo
+// motivo que la contraseña de Pocket Casts: es lo único que protege ese
+// servicio de que cualquiera lo use — su URL sí se incluye (no es
+// sensible por sí sola sin el secreto).
 // ---------------------------------------------------------------------------
 
 const EXPORT_FORMAT_VERSION = 1;
@@ -240,6 +261,7 @@ export function exportData() {
     podbridgeExport: EXPORT_FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
     proxyUrl: state.settings.proxyUrl,
+    relayUrl: state.settings.relayUrl,
     favorites: state.favorites,
     uploadHistory: state.uploadHistory,
   };
@@ -260,6 +282,9 @@ export function importData(data, { merge = true } = {}) {
   if (typeof data.proxyUrl === "string" && data.proxyUrl && !state.settings.proxyUrl) {
     saveProxyUrl(data.proxyUrl);
     proxyUrlApplied = true;
+  }
+  if (typeof data.relayUrl === "string" && data.relayUrl && !state.settings.relayUrl) {
+    saveRelayUrl(data.relayUrl);
   }
 
   if (Array.isArray(data.favorites)) {

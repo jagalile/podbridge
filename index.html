@@ -149,6 +149,28 @@
       <section class="settings-card">
         <div class="settings-card-head">
           <span class="settings-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 14h6v6h-6z"/><path d="M10 7h4a4 4 0 0 1 4 4v3M14 17h-4a4 4 0 0 1-4-4v-3"/></svg>
+          </span>
+          <h3>Relevo para episodios grandes (opcional)</h3>
+        </div>
+        <p class="hint">Cloudflare no consigue mantener fiable la subida de episodios de más de ~100&nbsp;MB. Despliega el servicio incluido en <code>/relay-service</code> en <a href="https://render.com" target="_blank" rel="noopener">Render.com</a> (gratis) y pega aquí su URL y el secreto que le hayas puesto — ver el README para el paso a paso. Sin esto, esos episodios grandes solo se pueden descargar y subir a mano.</p>
+        <label class="field">
+          <span>URL del servicio de relevo</span>
+          <input id="relay-url" type="url" placeholder="https://tu-relay.onrender.com" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Secreto compartido</span>
+          <input id="relay-secret" type="password" autocomplete="off" />
+        </label>
+        <div class="field-row">
+          <button id="save-relay" class="btn btn-secondary btn-sm" type="button">Guardar</button>
+          <span id="relay-status" class="field-status"></span>
+        </div>
+      </section>
+
+      <section class="settings-card">
+        <div class="settings-card-head">
+          <span class="settings-card-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
           </span>
           <h3>Cuenta de Pocket Casts</h3>
