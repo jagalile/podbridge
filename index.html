@@ -26,10 +26,28 @@
       </div>
 
       <div class="header-actions">
-        <button id="pc-status-btn" class="pc-status" type="button" aria-haspopup="dialog" aria-controls="settings-panel">
-          <span class="pc-dot" data-state="disconnected" aria-hidden="true"></span>
-          <span id="pc-status-label">Pocket Casts desconectado</span>
-        </button>
+        <div class="pc-status-wrap">
+          <button id="pc-status-btn" class="pc-status" type="button" aria-expanded="false" aria-controls="status-tooltip">
+            <span class="pc-dot" data-state="disconnected" aria-hidden="true"></span>
+            <span id="pc-status-label">Desconectado</span>
+          </button>
+          <div id="status-tooltip" class="status-tooltip" role="tooltip">
+            <div class="status-tooltip-row">
+              <span class="pc-dot" id="tooltip-worker-dot" aria-hidden="true"></span>
+              <div>
+                <p class="status-tooltip-title">Worker</p>
+                <p class="status-tooltip-text" id="tooltip-worker-text"></p>
+              </div>
+            </div>
+            <div class="status-tooltip-row">
+              <span class="pc-dot" id="tooltip-pc-dot" aria-hidden="true"></span>
+              <div>
+                <p class="status-tooltip-title">Pocket Casts</p>
+                <p class="status-tooltip-text" id="tooltip-pc-text"></p>
+              </div>
+            </div>
+          </div>
+        </div>
         <button id="open-settings" class="icon-btn" type="button" title="Ajustes" aria-haspopup="dialog" aria-controls="settings-panel">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 2.5h3.4l.6 2.7a7.7 7.7 0 0 1 2 1.16l2.6-.87 1.7 2.95-2.1 1.83a7.8 7.8 0 0 1 0 2.32l2.1 1.83-1.7 2.95-2.6-.87a7.7 7.7 0 0 1-2 1.16l-.6 2.7h-3.4l-.6-2.7a7.7 7.7 0 0 1-2-1.16l-2.6.87-1.7-2.95 2.1-1.83a7.8 7.8 0 0 1 0-2.32l-2.1-1.83 1.7-2.95 2.6.87a7.7 7.7 0 0 1 2-1.16z"/><circle cx="12" cy="12" r="3.1"/></svg>
         </button>

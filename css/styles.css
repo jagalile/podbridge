@@ -133,6 +133,36 @@ code {
 .pc-dot[data-state="error"] { background: var(--danger); }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 
+/* La pastilla de estado ya no abre Ajustes (eso es lo que hace el
+   engranaje de al lado, y hacer lo mismo dos veces era redundante):
+   ahora solo enseña un resumen genérico y, al pasar el ratón o pulsar,
+   un detalle del Worker y de Pocket Casts por separado. */
+.pc-status-wrap { position: relative; }
+.status-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 260px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-m);
+  padding: 12px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 30;
+}
+.pc-status-wrap:hover .status-tooltip,
+.pc-status-wrap:focus-within .status-tooltip,
+.status-tooltip.is-open {
+  display: flex;
+}
+.status-tooltip-row { display: flex; align-items: flex-start; gap: 8px; }
+.status-tooltip-row .pc-dot { margin-top: 5px; }
+.status-tooltip-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); margin: 0; }
+.status-tooltip-text { font-size: 13px; margin: 2px 0 0; word-break: break-word; }
+
 .icon-btn {
   width: 38px; height: 38px;
   display: grid; place-items: center;

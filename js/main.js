@@ -37,7 +37,29 @@ function closeSettings() {
   closeOverlay();
 }
 $("#open-settings").addEventListener("click", openSettings);
-$("#pc-status-btn").addEventListener("click", openSettings);
+
+// ---------------------------------------------------------------------------
+// Tooltip de estado (Worker + Pocket Casts por separado)
+//
+// El botón de estado ya no abre Ajustes — eso ya lo hace el engranaje de
+// al lado, y hacerlo dos veces era redundante. Ahora solo enseña un
+// resumen genérico y, al pasar el ratón o al pulsarlo (para pantallas
+// táctiles, donde no hay hover), un detalle de cada conexión.
+const statusTooltip = $("#status-tooltip");
+const pcStatusBtn = $("#pc-status-btn");
+
+pcStatusBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const willOpen = !statusTooltip.classList.contains("is-open");
+  statusTooltip.classList.toggle("is-open", willOpen);
+  pcStatusBtn.setAttribute("aria-expanded", String(willOpen));
+});
+document.addEventListener("click", (e) => {
+  if (!statusTooltip.classList.contains("is-open")) return;
+  if (e.target === pcStatusBtn || pcStatusBtn.contains(e.target)) return;
+  statusTooltip.classList.remove("is-open");
+  pcStatusBtn.setAttribute("aria-expanded", "false");
+});
 $("#close-settings").addEventListener("click", closeSettings);
 
 $("#save-proxy").addEventListener("click", () => {
@@ -476,30 +498,55 @@ async function handleEpisodeAction(episode, btn) {
 // Render reactivo global (botones de acción + estado de conexión PC)
 // ---------------------------------------------------------------------------
 /**
- * Estado combinado que se ve en la cabecera: antes solo reflejaba Pocket
- * Casts, pero si el Worker no está configurado o no responde el usuario
- * veía "Pocket Casts desconectado" sin ninguna pista de que el problema
- * real era el puente, no la cuenta.
+ * Estado combinado que se ve en la pastilla de la cabecera: un resumen
+ * genérico y corto (el detalle completo, Worker y Pocket Casts por
+ * separado, va en el tooltip — ver computeConnectionDetails).
  */
 function computeOverallStatus() {
   const w = state.worker.status;
   const pc = state.pocketcasts;
 
-  if (!state.settings.proxyUrl) return { dot: "disconnected", label: "Configura el Worker" };
-  if (w === "checking" || w === "unknown") return { dot: "connecting", label: "Comprobando conexión…" };
-  if (w === "error") return { dot: "error", label: "El Worker no responde" };
+  if (!state.settings.proxyUrl) return { dot: "disconnected", label: "Sin configurar" };
+  if (w === "checking" || w === "unknown") return { dot: "connecting", label: "Comprobando…" };
+  if (w === "error") return { dot: "error", label: "Error de conexión" };
 
-  if (pc.status === "connecting") return { dot: "connecting", label: "Conectando a Pocket Casts…" };
-  if (pc.status === "error") return { dot: "error", label: "Error con Pocket Casts" };
-  if (pc.status === "connected") return { dot: "connected", label: `Conectado como ${pc.email}` };
-  return { dot: "disconnected", label: "Pocket Casts desconectado" };
+  if (pc.status === "connecting") return { dot: "connecting", label: "Conectando…" };
+  if (pc.status === "error") return { dot: "error", label: "Error de conexión" };
+  if (pc.status === "connected") return { dot: "connected", label: "Conectado" };
+  return { dot: "disconnected", label: "Desconectado" };
+}
+
+/** Detalle del Worker y de Pocket Casts por separado, para el tooltip. */
+function computeConnectionDetails() {
+  const w = state.worker.status;
+  const pc = state.pocketcasts;
+
+  let worker;
+  if (!state.settings.proxyUrl) worker = { dot: "disconnected", text: "Sin configurar" };
+  else if (w === "checking" || w === "unknown") worker = { dot: "connecting", text: "Comprobando conexión…" };
+  else if (w === "ok") worker = { dot: "connected", text: "Responde correctamente" };
+  else worker = { dot: "error", text: "No responde en esa URL" };
+
+  let pocket;
+  if (pc.status === "connecting") pocket = { dot: "connecting", text: "Conectando…" };
+  else if (pc.status === "error") pocket = { dot: "error", text: pc.error || "Error de conexión" };
+  else if (pc.status === "connected") pocket = { dot: "connected", text: `Conectado como ${pc.email}` };
+  else pocket = { dot: "disconnected", text: "Desconectado" };
+
+  return { worker, pocket };
 }
 
 function render() {
   const pc = state.pocketcasts;
   const overall = computeOverallStatus();
-  $(".pc-dot").dataset.state = overall.dot;
+  $("#pc-status-btn .pc-dot").dataset.state = overall.dot;
   $("#pc-status-label").textContent = overall.label;
+
+  const { worker: workerDetail, pocket: pocketDetail } = computeConnectionDetails();
+  $("#tooltip-worker-dot").dataset.state = workerDetail.dot;
+  $("#tooltip-worker-text").textContent = workerDetail.text;
+  $("#tooltip-pc-dot").dataset.state = pocketDetail.dot;
+  $("#tooltip-pc-text").textContent = pocketDetail.text;
 
   const workerHealthEl = $("#worker-health");
   workerHealthEl.className = "worker-health";
