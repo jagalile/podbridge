@@ -295,8 +295,8 @@ code {
   cursor: pointer;
   transition: color .15s ease, border-color .15s ease, transform .1s ease;
 }
-.favorite-btn:hover { color: var(--exclusive); border-color: var(--exclusive); transform: scale(1.08); }
-.favorite-btn.is-favorite { color: var(--exclusive); }
+.favorite-btn:hover { color: var(--danger); border-color: var(--danger); transform: scale(1.08); }
+.favorite-btn.is-favorite { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
 .favorite-btn.is-favorite svg { fill: currentColor; }
 .program-cover {
   position: relative;

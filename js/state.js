@@ -213,3 +213,76 @@ export function recordUpload(episode) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(state.uploadHistory));
   notify();
 }
+
+// ---------------------------------------------------------------------------
+// Exportar / importar datos guardados
+//
+// Deliberadamente NO se incluye nunca ninguna credencial ni token de
+// Pocket Casts en la exportación: el token "recordado" está cifrado con
+// una clave que nunca sale de este navegador, así que exportarlo no
+// serviría de nada en otro dispositivo — y meter cualquier cosa
+// relacionada con la cuenta en un fichero suelto es justo lo que no
+// interesa. Solo viajan favoritos, historial de subidas y la URL del
+// Worker (no es sensible, es solo la dirección de tu propio puente).
+// ---------------------------------------------------------------------------
+
+const EXPORT_FORMAT_VERSION = 1;
+
+export function exportData() {
+  return {
+    podbridgeExport: EXPORT_FORMAT_VERSION,
+    exportedAt: new Date().toISOString(),
+    proxyUrl: state.settings.proxyUrl,
+    favorites: state.favorites,
+    uploadHistory: state.uploadHistory,
+  };
+}
+
+/**
+ * @param {object} data el JSON ya parseado
+ * @param {{merge?: boolean}} opts merge=true (por defecto) añade a lo que
+ *   ya hay; merge=false sustituye favoritos e historial por completo.
+ * @returns {{favorites:number, uploads:number, proxyUrlApplied:boolean}}
+ */
+export function importData(data, { merge = true } = {}) {
+  if (!data || typeof data !== "object") {
+    throw new Error("El archivo no tiene un formato reconocible.");
+  }
+
+  let proxyUrlApplied = false;
+  if (typeof data.proxyUrl === "string" && data.proxyUrl && !state.settings.proxyUrl) {
+    saveProxyUrl(data.proxyUrl);
+    proxyUrlApplied = true;
+  }
+
+  if (Array.isArray(data.favorites)) {
+    const incoming = data.favorites.filter((f) => f && f.id && f.title && f.url);
+    state.favorites = dedupeById(merge ? [...incoming, ...state.favorites] : incoming);
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(state.favorites));
+  }
+
+  if (data.uploadHistory && typeof data.uploadHistory === "object" && !Array.isArray(data.uploadHistory)) {
+    state.uploadHistory = merge
+      ? { ...data.uploadHistory, ...state.uploadHistory } // lo local gana si hay conflicto de id
+      : { ...data.uploadHistory };
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(state.uploadHistory));
+  }
+
+  notify();
+  return {
+    favorites: state.favorites.length,
+    uploads: Object.keys(state.uploadHistory).length,
+    proxyUrlApplied,
+  };
+}
+
+function dedupeById(list) {
+  const seen = new Set();
+  const out = [];
+  for (const item of list) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
+}

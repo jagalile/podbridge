@@ -77,10 +77,14 @@ ninguna de las dos.
 **Favoritos e historial**
 - Marca programas como favoritos con un toque (desde la tarjeta de
   búsqueda o desde la propia ficha del programa) y encuéntralos luego en
-  la pestaña "Favoritos" del buscador.
+  la pestaña "Favoritos" del buscador, que además tiene su propio filtro
+  por título para cuando la lista crece.
 - Los episodios ya subidos se recuerdan entre sesiones: si vuelves más
   tarde, siguen marcados como subidos en vez de ofrecerte subirlos otra
   vez.
+- Exportar/importar favoritos, historial y la URL del Worker como un
+  archivo JSON, para hacer copia de seguridad o pasarlos a otro navegador
+  — nunca incluye contraseñas ni el token de Pocket Casts.
 
 **Interfaz**
 - Diseño responsive (escritorio y móvil), con tema claro/oscuro

@@ -1,7 +1,8 @@
 import {
   state, subscribe, saveProxyUrl, setWorkerStatus, setPocketCasts, logoutPocketCasts, getJob,
   isFavorite, toggleFavorite, recordUpload,
-  rememberMeSupported, persistPocketCastsSession, restorePersistedPocketCastsSession, clearPersistedPocketCastsSession,
+  rememberMeSupported, persistPocketCastsSession, restorePersistedPocketCastsSession,
+  exportData, importData,
 } from "./state.js";
 import * as ivoox from "./api/ivoox.js";
 import * as pocketcasts from "./api/pocketcasts.js";
@@ -97,10 +98,15 @@ $("#pc-logout-btn").addEventListener("click", () => {
   render();
 });
 
-$("#pc-forget-btn").addEventListener("click", () => {
-  clearPersistedPocketCastsSession();
-  setPocketCasts({ remember: false });
-  toast("Este dispositivo ya no recordará la sesión de Pocket Casts", "info");
+// Se puede activar/desactivar "recordarme" en cualquier momento estando ya
+// conectado, no solo en el instante del login — si no, quien inició sesión
+// antes de marcar la casilla (o antes de que existiera esta opción) no
+// tenía forma de verla ni de usarla sin desconectar y volver a entrar.
+$("#pc-remember-connected").addEventListener("change", async (e) => {
+  const checked = e.target.checked;
+  setPocketCasts({ remember: checked });
+  await persistPocketCastsSession(checked, state.pocketcasts.email, state.pocketcasts.token);
+  toast(checked ? "Este dispositivo recordará la sesión" : "Sesión ya no recordada en este dispositivo", "info");
   render();
 });
 
@@ -109,13 +115,53 @@ $("#pc-forget-btn").addEventListener("click", () => {
 restorePersistedPocketCastsSession().then(render);
 
 // ---------------------------------------------------------------------------
+// Exportar / importar datos (favoritos, historial, URL del Worker)
+// ---------------------------------------------------------------------------
+$("#export-data").addEventListener("click", () => {
+  const data = exportData();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `podbridge-datos-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  $("#data-io-status").textContent = "Exportado ✓";
+  setTimeout(() => { $("#data-io-status").textContent = ""; }, 2500);
+});
+
+const importInput = $("#import-data-input");
+$("#import-data-btn").addEventListener("click", () => importInput.click());
+
+importInput.addEventListener("change", async () => {
+  const file = importInput.files[0];
+  importInput.value = ""; // permite volver a elegir el mismo archivo después
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const result = importData(data, { merge: true });
+    toast(
+      `Importado: ${result.favorites} favoritos, ${result.uploads} episodios en el historial` +
+        (result.proxyUrlApplied ? " y la URL del Worker" : ""),
+      "success",
+    );
+    render();
+  } catch (err) {
+    toast(`No se ha podido importar el archivo: ${err.message}`, "error");
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Búsqueda
 // ---------------------------------------------------------------------------
 const searchForm = $("#search-form");
 const searchInput = $("#search-input");
 
 const searchSubmitBtn = searchForm.querySelector("button[type=submit]");
-const searchInputWrap = $(".search-input-wrap");
 
 document.querySelectorAll(".search-type .chip").forEach((chip) => {
   chip.addEventListener("click", () => {
@@ -126,29 +172,40 @@ document.querySelectorAll(".search-type .chip").forEach((chip) => {
     chip.classList.add("is-active");
     chip.setAttribute("aria-selected", "true");
     state.search.type = chip.dataset.type;
+    state.search.query = "";
+    searchInput.value = "";
 
     const isFavoritesTab = state.search.type === "favorites";
-    searchInputWrap.hidden = isFavoritesTab;
     searchSubmitBtn.hidden = isFavoritesTab;
+    searchInput.placeholder = isFavoritesTab
+      ? "Buscar en tus favoritos…"
+      : "Ej. “La Script” o “Nadie Sabe Nada”";
 
-    if (isFavoritesTab) {
-      renderFavorites();
-    } else if (state.search.query) {
-      doSearch();
-    }
+    if (isFavoritesTab) renderFavorites();
+    else renderResults();
   });
 });
 
+/** Filtra localmente los favoritos por título — no hay red de por medio. */
 function renderFavorites() {
   closeProgramView();
+  const query = state.search.query.trim().toLowerCase();
+  const visible = query
+    ? state.favorites.filter((f) => f.title.toLowerCase().includes(query))
+    : state.favorites;
+
   if (state.favorites.length === 0) {
     emptyFavoritesState(resultsEl);
+    return;
+  }
+  if (visible.length === 0) {
+    emptyState(resultsEl, state.search.query);
     return;
   }
   resultsEl.innerHTML = "";
   const wrap = document.createElement("div");
   wrap.className = "grid";
-  for (const program of state.favorites) {
+  for (const program of visible) {
     wrap.appendChild(renderProgramCard(program, openProgram));
   }
   resultsEl.appendChild(wrap);
@@ -157,7 +214,8 @@ function renderFavorites() {
 searchForm.addEventListener("submit", (e) => {
   e.preventDefault();
   state.search.query = searchInput.value.trim();
-  doSearch();
+  if (state.search.type === "favorites") renderFavorites();
+  else doSearch();
 });
 
 const debouncedTypeahead = debounce(() => {
@@ -167,7 +225,14 @@ const debouncedTypeahead = debounce(() => {
     doSearch();
   }
 }, 500);
-searchInput.addEventListener("input", debouncedTypeahead);
+searchInput.addEventListener("input", () => {
+  if (state.search.type === "favorites") {
+    state.search.query = searchInput.value;
+    renderFavorites();
+  } else {
+    debouncedTypeahead();
+  }
+});
 
 let searchAbort = null;
 
@@ -312,7 +377,7 @@ function renderProgram() {
           <h2>${escapeHtml(info.title)} ${badge}</h2>
           <button type="button" class="favorite-btn${fav ? " is-favorite" : ""}" id="program-favorite-btn"
             aria-label="${fav ? "Quitar de favoritos" : "Añadir a favoritos"}" title="${fav ? "Quitar de favoritos" : "Añadir a favoritos"}">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.5c2-3 7-2.5 7 2 0 4.5-5 7.5-7 9-2-1.5-7-4.5-7-9 0-4.5 5-5 7-2z"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.3C12 20.3 4 15.4 4 9.6 4 6.5 6.5 4.5 9 4.5c1.5 0 2.5.8 3 1.8.5-1 1.5-1.8 3-1.8 2.5 0 5 2 5 5.1 0 5.8-8 10.7-8 10.7z"/></svg>
           </button>
         </div>
         ${description ? `<p class="program-header-description" id="program-description">${escapeHtml(description)}</p>` : ""}
@@ -458,7 +523,9 @@ function render() {
   if (!connected) $("#pc-email").value = pc.email;
 
   const rememberSupported = rememberMeSupported();
-  $("#pc-remember-field").hidden = !rememberSupported;
+  $("#pc-remember-field").hidden = !rememberSupported || connected;
+  $("#pc-remember-connected-field").hidden = !rememberSupported || !connected;
+  $("#pc-remember-connected").checked = pc.remember;
   $("#pc-remember-hint").hidden = !(connected && pc.remember);
 
   document.querySelectorAll(".action-btn[data-episode-id]").forEach((btn) => {
