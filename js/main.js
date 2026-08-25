@@ -58,10 +58,25 @@ $("#open-settings").addEventListener("click", openSettings);
 // ratón o al pulsarla (para pantallas táctiles, donde no hay hover), un
 // detalle en un popover propio. Misma mecánica para los dos, así que va
 // en una única función en vez de duplicar el código de apertura/cierre.
+// Los dos triggers cortan la propagación del clic (e.stopPropagation())
+// para que el clic que los abre no cierre el suyo propio al llegar al
+// listener de "fuera" de más abajo — pero eso significa que si el
+// segundo tooltip está abierto cuando se pulsa el primero, ese clic
+// nunca llega al listener de "fuera" del segundo (la propagación se
+// cortó antes), y se quedaban los dos abiertos a la vez. Por eso hace
+// falta que abrir uno cierre explícitamente el resto, no basta con el
+// cierre "al pulsar fuera".
+const statusTooltips = [];
 function wireStatusTooltip(triggerEl, tooltipEl) {
+  statusTooltips.push({ trigger: triggerEl, tooltip: tooltipEl });
   triggerEl.addEventListener("click", (e) => {
     e.stopPropagation();
     const willOpen = !tooltipEl.classList.contains("is-open");
+    for (const other of statusTooltips) {
+      if (other.tooltip === tooltipEl) continue;
+      other.tooltip.classList.remove("is-open");
+      other.trigger.setAttribute("aria-expanded", "false");
+    }
     tooltipEl.classList.toggle("is-open", willOpen);
     triggerEl.setAttribute("aria-expanded", String(willOpen));
   });
