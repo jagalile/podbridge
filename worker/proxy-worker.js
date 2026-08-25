@@ -704,17 +704,30 @@ function bytesToHex(bytes) {
  * espera a que termine — corre en paralelo al fetch que consume el otro
  * extremo del stream.
  */
-async function pumpWithBackpressure(readable, writable) {
+async function pumpWithBackpressure(readable, writable, { label = "" } = {}) {
   const reader = readable.getReader();
   const writer = writable.getWriter();
+  let bytes = 0;
+  let lastLoggedMb = 0;
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       await writer.write(value);
+      bytes += value.byteLength;
+      // Sin esto, un fallo a mitad de camino solo dice "se rompió", no
+      // por dónde — con episodios de cientos de MB eso es la diferencia
+      // entre depurar a ciegas y saber exactamente qué punto investigar.
+      const mb = Math.floor(bytes / (5 * 1024 * 1024));
+      if (mb > lastLoggedMb) {
+        lastLoggedMb = mb;
+        console.log(`pumpWithBackpressure${label ? ` [${label}]` : ""}: ${(bytes / 1e6).toFixed(1)} MB copiados`);
+      }
     }
     await writer.close();
+    console.log(`pumpWithBackpressure${label ? ` [${label}]` : ""}: terminado, ${(bytes / 1e6).toFixed(1)} MB en total`);
   } catch (err) {
+    console.error(`pumpWithBackpressure${label ? ` [${label}]` : ""}: falló tras ${(bytes / 1e6).toFixed(1)} MB — ${err.message || err}`);
     await writer.abort(err).catch(() => {});
   }
 }
@@ -762,6 +775,7 @@ async function handlePocketCastsUploadEpisode(request, env) {
     );
   }
 
+  console.log(`upload-episode: descargando audio de iVoox (${episodeUrl})`);
   const audioRes = await fetch(audioUrl, {
     headers: { ...BROWSER_HEADERS, Referer: episodeUrl },
     signal: AbortSignal.timeout(15 * 60 * 1000), // 15 min: de sobra incluso para un episodio muy largo en una conexión lenta
@@ -773,6 +787,7 @@ async function handlePocketCastsUploadEpisode(request, env) {
   const size = Number(audioRes.headers.get("Content-Length") || 0);
   const contentType = audioRes.headers.get("Content-Type") || "audio/mpeg";
   if (!size) return errorResponse("iVoox no informó del tamaño del audio", env, 502);
+  console.log(`upload-episode: iVoox respondió Ok, ${(size / 1e6).toFixed(1)} MB declarados (${contentType})`);
 
   const id = crypto.randomUUID();
   const requestBody = encodeFileUploadRequest({
@@ -793,6 +808,7 @@ async function handlePocketCastsUploadEpisode(request, env) {
   if (!presignedUrl) {
     return errorResponse("Pocket Casts no devolvió una URL de subida válida", env, 502);
   }
+  console.log(`upload-episode: URL prefirmada obtenida (uuid ${id}), empezando el PUT`);
 
   // El audio se retransmite en streaming directo de iVoox a S3: nunca pasa
   // por memoria como un buffer completo, ni por el navegador. Por el
@@ -826,15 +842,21 @@ async function handlePocketCastsUploadEpisode(request, env) {
   //      el lado de escritura esté listo antes de pedir el siguiente,
   //      igual que pipeTo() debería hacer pero aquí no lo hace bien.
   const { readable, writable } = new FixedLengthStream(size);
-  pumpWithBackpressure(audioRes.body, writable); // sin esperar: corre en paralelo al fetch de abajo
+  pumpWithBackpressure(audioRes.body, writable, { label: "iVoox→PC" }); // sin esperar: corre en paralelo al fetch de abajo
 
-  const putRes = await fetch(presignedUrl, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: readable,
-    duplex: "half",
-    signal: AbortSignal.timeout(15 * 60 * 1000),
-  });
+  let putRes;
+  try {
+    putRes = await fetch(presignedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body: readable,
+      duplex: "half",
+      signal: AbortSignal.timeout(15 * 60 * 1000),
+    });
+  } catch (err) {
+    console.error(`upload-episode: el PUT a Pocket Casts lanzó una excepción — ${err.message || err}`);
+    throw err;
+  }
   if (!putRes.ok) {
     // Diagnóstico no sensible (nunca la URL pre-firmada ni nada del
     // token): con tres intentos fallidos seguidos con errores distintos
