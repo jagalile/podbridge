@@ -1,153 +1,307 @@
-# PodBridge — iVoox → Pocket Casts
+# PodBridge
 
-Busca programas y episodios de iVoox y súbelos directamente a tus **Archivos**
-de Pocket Casts, sin pasos manuales. Los episodios **exclusivos** de iVoox se
-identifican y quedan bloqueados: esta herramienta solo descarga audio de
-acceso público, nunca contenido de pago.
+**Busca programas y episodios de iVoox, y súbelos directamente a tus
+Archivos de Pocket Casts — sin descargar nada a mano, sin conversiones,
+sin pasos intermedios.**
 
-## Cómo está montado (y por qué)
+PodBridge es una herramienta personal, pensada para gente que sigue
+podcasts en iVoox pero prefiere Pocket Casts como reproductor. Busca un
+programa o un episodio, pulsa un botón y el audio (y su portada) aparecen
+en tus Archivos de Pocket Casts, listos para escuchar en cualquier
+dispositivo.
 
-GitHub Pages solo sirve ficheros estáticos. Pero para que la app funcione de
-verdad hacen falta dos cosas que un navegador no puede hacer por sí solo:
+No es una app oficial de iVoox ni de Pocket Casts, ni tiene afiliación con
+ninguna de las dos.
+
+---
+
+## Índice
+
+- [Características](#características)
+- [Cómo funciona (arquitectura)](#cómo-funciona-arquitectura)
+- [Instalación y despliegue](#instalación-y-despliegue)
+- [Uso](#uso)
+- [Cómo funciona el Worker por dentro](#cómo-funciona-el-worker-por-dentro)
+- [Limitaciones y cosas a tener en cuenta](#limitaciones-y-cosas-a-tener-en-cuenta)
+- [Estructura del repositorio](#estructura-del-repositorio)
+- [Licencia](#licencia)
+- [Aviso de uso](#aviso-de-uso)
+
+---
+
+## Características
+
+**Búsqueda**
+- Buscador de programas de iVoox, con portada, insignia de iVoox
+  Originals y descripción (con "Leer más" para la versión completa).
+- Buscador de episodios sueltos por palabra clave (aproximado: busca
+  entre los episodios de los programas más afines a la búsqueda — iVoox
+  no indexa episodios individuales).
+- Buscador propio *dentro* de la lista de episodios de un programa ya
+  abierto, para encontrar uno concreto sin bajar a mano.
+
+**Programas y episodios**
+- Vista de programa con portada, descripción, enlace directo a iVoox
+  (nueva pestaña) e insignia de iVoox Originals cuando corresponde.
+- Lista de episodios con scroll infinito (cargan por páginas a medida
+  que bajas, no solo la primera).
+- Cada episodio muestra portada, fecha, duración y un botón de "más
+  información" con la ficha completa (descripción entera, insignias,
+  enlace a iVoox).
+- Los episodios **exclusivos** (contenido de pago de iVoox) se
+  identifican y quedan bloqueados: esta herramienta nunca los descarga.
+
+**Descarga y subida**
+- Un solo botón por episodio: descarga el audio de iVoox y lo sube a
+  Archivos de Pocket Casts, con barra de progreso real en cada fase.
+- Sube también la portada del episodio como imagen personalizada del
+  fichero en Pocket Casts (si falla, el episodio se sube igualmente, solo
+  que sin portada propia).
+- Streaming de extremo a extremo: los ficheros de audio no se cargan
+  enteros en memoria en ningún punto, así que episodios largos (varias
+  horas) no deberían colgar la subida.
+
+**Cuenta y estado**
+- Conexión con Pocket Casts mediante email y contraseña; las
+  credenciales viajan directas a tu propio Worker y de ahí a Pocket
+  Casts, nunca a un servidor de terceros, y solo se guardan en memoria de
+  la pestaña mientras la tengas abierta.
+- Indicador de estado combinado en la cabecera: si el Worker no está
+  configurado, si no responde, o el estado real de la sesión de Pocket
+  Casts — de un vistazo sabes qué falla si algo no funciona.
+
+**Interfaz**
+- Diseño responsive (escritorio y móvil), con tema claro/oscuro
+  automático según el sistema.
+- Estados de carga (esqueletos), vacío y error cuidados en toda la app,
+  con opción de reintentar.
+- Aviso antes de cerrar o recargar la pestaña si hay una descarga o
+  subida en curso.
+
+---
+
+## Cómo funciona (arquitectura)
+
+GitHub Pages solo sirve ficheros estáticos (HTML/CSS/JS). Pero hacer
+funcionar esta app de verdad requiere dos cosas que un navegador no puede
+hacer por sí solo:
 
 1. **Buscar en iVoox.** iVoox no tiene una API JSON pública — su búsqueda
-   son páginas HTML normales. Hay que descargarlas e interpretarlas
-   (scraping), y además su servidor no manda cabeceras CORS para permitir
-   que un origen externo (`tu-usuario.github.io`) las lea con `fetch`.
-2. **Subir a Pocket Casts.** Su API (`api.pocketcasts.com`) no es pública,
-   usa mensajes **protobuf** binarios para subir ficheros y tampoco habilita
-   CORS para orígenes de terceros.
+   son páginas HTML normales, hay que descargarlas e interpretarlas
+   (*scraping*), y su servidor no manda cabeceras CORS pensadas para que
+   un origen externo (como `tu-usuario.github.io`) las lea con `fetch`.
+2. **Subir a Pocket Casts.** Su API (`api.pocketcasts.com`) es privada,
+   usa mensajes **protobuf** binarios para subir ficheros, y tampoco
+   habilita CORS para orígenes de terceros.
 
-La solución es un **Worker de Cloudflare** (`/worker`, gratis, tuyo) que hace
-de puente: el frontend estático en GitHub Pages le habla a tu Worker, y tu
-Worker habla con iVoox y Pocket Casts. Tus credenciales de Pocket Casts pasan
-por infraestructura que controlas tú — nunca por un servidor de un tercero.
+La solución es un pequeño **Worker de Cloudflare** — gratis, tuyo, lo
+despliegas tú — que hace de puente: el frontend estático en GitHub Pages
+le habla a tu Worker, y tu Worker habla con iVoox y con Pocket Casts.
 
 ```
-Navegador (GitHub Pages) ──fetch──▶ Tu Worker (Cloudflare) ──▶ iVoox (scraping)
-                                                          └──▶ Pocket Casts (protobuf)
+Navegador (GitHub Pages)
+   │  búsqueda, progreso, ajustes
+   ▼
+Tu Worker (Cloudflare)
+   │  parsea el HTML de iVoox ────────────▶  iVoox (scraping)
+   │  habla el protobuf de Pocket Casts ──▶  Pocket Casts (API privada)
 ```
 
-## 1. Desplegar el Worker
+Cada usuario despliega **su propio Worker**: es una decisión de diseño,
+no una limitación accidental. Así las credenciales de Pocket Casts pasan
+siempre por infraestructura que tú controlas, nunca por un servidor
+compartido con otros usuarios de la app.
+
+---
+
+## Instalación y despliegue
+
+### 1. Desplegar el Worker
 
 ```bash
 cd worker
-npx wrangler login        # una vez
+npx wrangler login        # una vez, abre el navegador para autorizar
 npx wrangler deploy
 ```
 
-Wrangler te dará una URL tipo `https://podbridge-proxy.tu-cuenta.workers.dev`.
+La primera vez, `wrangler` puede pedirte registrar un subdominio
+`workers.dev` (gratis, di que sí) y verificar el email de tu cuenta de
+Cloudflare si aún no lo has hecho. Al terminar te da una URL del tipo:
+
+```
+https://podbridge-proxy.tu-subdominio.workers.dev
+```
+
 Guárdala, la necesitas en el paso 3.
 
-Opcional pero recomendado: una vez tengas la URL de tu GitHub Pages, edita
-`worker/wrangler.toml` y cambia `ALLOWED_ORIGIN = "*"` por tu dominio real
-(`https://tu-usuario.github.io`), y vuelve a desplegar.
+Opcional pero recomendado: una vez tengas la URL de tu GitHub Pages,
+edita `worker/wrangler.toml` y cambia `ALLOWED_ORIGIN = "*"` por tu
+dominio real (`https://tu-usuario.github.io`), y vuelve a desplegar.
 
-## 2. Publicar el frontend en GitHub Pages
+### 2. Publicar el frontend en GitHub Pages
 
-Sube este repositorio a GitHub y activa Pages:
-**Settings → Pages → Build and deployment → GitHub Actions**. El workflow en
-`.github/workflows/deploy.yml` publica la raíz del repo en cada push a
-`main` (no hay build step: es HTML/CSS/JS plano).
+Sube este repositorio a GitHub y activa Pages en
+**Settings → Pages → Build and deployment → GitHub Actions**. El workflow
+en `.github/workflows/deploy.yml` publica la raíz del repo en cada push a
+`main` — no hay paso de compilación, es HTML/CSS/JS plano.
 
-## 3. Configurar la app
+> Nota: GitHub Pages con repositorio **privado** requiere un plan GitHub
+> Pro, Team o Enterprise; en una cuenta gratuita el repo tiene que ser
+> público para poder publicar Pages. Y aunque el repo sea privado, la web
+> publicada sigue siendo accesible por su URL para cualquiera que la
+> tenga — GitHub Pages no restringe el acceso a la página en sí salvo en
+> planes Enterprise.
 
-Abre la web publicada → icono de ajustes (⚙️):
+### 3. Configurar la app
 
-- **URL del Worker**: pega la URL de wrangler del paso 1.
-- **Cuenta de Pocket Casts**: tu email y contraseña. Se envían a tu propio
-  Worker y de ahí a Pocket Casts; solo se guardan en `sessionStorage` de esa
-  pestaña (se borran al cerrarla). El token de sesión resultante es lo único
-  que queda en memoria del navegador.
+Abre la web publicada → icono de ajustes:
 
-## Sobre el scraping de iVoox (léelo antes de reportar un "no funciona")
+- **URL del Worker**: pega la URL de `wrangler` del paso 1.
+- **Cuenta de Pocket Casts**: tu email y contraseña.
 
-iVoox no ofrece garantías de estabilidad para su HTML público, y de hecho
-mezcla dos generaciones de plantillas distintas:
+---
 
-- Las páginas de **búsqueda de programas** (`podcast-{término}_sw_1_1_1.html`)
-  son HTML "clásico" con microdatos `itemprop="name"/"url"/"description"`
-  por tarjeta (`parseProgramCards`).
-- Las páginas de **programa/episodios** son una SPA Nuxt donde casi todos
-  los enlaces son **relativos** (`/episodio.html`, no
-  `https://www.ivoox.com/episodio.html`) y el título de cada episodio va en
-  un `<a class="...text-truncate...">` dentro de un `<h3>` (`parseEpisodeCards`).
+## Uso
 
-La **exclusividad** se detecta por la clase del botón de reproducción:
-`round-play btn-fans` en episodios del programa de Fans/pago de iVoox,
-`round-play btn-primary` en los libres — más fiable que buscar la palabra
-"exclusivo" en el texto. El **mp3 real** de un episodio libre se resuelve
-sin necesidad de más scraping: iVoox lo sirve siempre en
-`https://www.ivoox.com/listen_mn_<id-del-episodio>_1.mp3` (mismo `<id>` que
-aparece como `_rf_<id>` en la URL del episodio), con un par de redirecciones
-302 hasta su CDN (Triton Digital) — `resolveAudioUrl` solo construye esa URL,
-no hace falta descargar la página del episodio para averiguarla.
+1. Busca un programa (o un episodio) desde la portada.
+2. Abre un programa para ver su lista completa de episodios — baja con
+   scroll para cargar más, o usa el buscador propio de esa lista para
+   encontrar uno concreto.
+3. Pulsa el botón de descarga en el episodio que quieras: se descarga de
+   iVoox y se sube a Pocket Casts automáticamente, con su portada.
+4. El botón de información (ⓘ) abre la ficha completa de un episodio sin
+   salir de la lista.
 
-Si algo de esto deja de funcionar (títulos raros, "No disponible" en masa,
-programas sin episodios):
+Los episodios marcados como **exclusivos** no tienen botón de descarga:
+es contenido de pago de iVoox y esta herramienta no lo toca.
 
-1. Abre `https://TU-WORKER.workers.dev/ivoox/raw?url=<la-url-que-falla>`
-   en el navegador para ver el HTML real que ve el Worker.
-2. Busca ahí las clases/atributos que usan las funciones de arriba
-   (`itemprop`, `text-truncate`, `round-play`, `_rf_`) y comprueba si iVoox
-   los ha cambiado.
-3. Ajusta `parseProgramCards` / `parseEpisodeCards` / `resolveAudioUrl` en
-   `worker/proxy-worker.js` en consecuencia y vuelve a `wrangler deploy`.
+---
 
-**Búsqueda de episodios:** iVoox no indexa episodios sueltos por palabra
-clave (solo programas). Cuando buscas en modo "Episodios", el Worker busca
-primero los programas más afines a tu término y luego filtra los episodios
-de esos programas cuyo título la contiene — es una aproximación razonable,
-no una búsqueda global real. Para encontrar un episodio muy concreto suele
-ir mejor buscar el programa y abrir su lista completa.
+## Cómo funciona el Worker por dentro
 
-## Sobre la API de Pocket Casts
+`worker/proxy-worker.js` expone estos endpoints:
 
-`api.pocketcasts.com` es una API privada, no documentada oficialmente. Este
-proyecto implementa el flujo de subida de Archivos tal y como lo hacen las
-apps oficiales (reverse-engineered): `POST /user/login` para el token, y
-`POST /files/upload/request` con un mensaje protobuf (`uuid`, `title`,
-`size`, `contentType`, `hasCustomImage_p`) que devuelve una URL S3
-pre-firmada donde se sube el audio con `PUT`. Si el episodio tiene portada,
-hay un segundo paso independiente — `POST /files/upload/image` con
-(`uuid`, `size`, `contentType`), mismo `uuid` que el audio — que da otra
-URL pre-firmada para subir la imagen; si ese segundo paso falla no se
-reintenta ni bloquea nada, el episodio se queda sin portada personalizada y
-ya está. La subida de Archivos a la nube **requiere Pocket Casts Plus**;
-sin esa suscripción, Pocket Casts rechazará la solicitud.
+| Endpoint | Qué hace |
+|---|---|
+| `GET /health` | Comprobación de vida, la usa la app para el indicador de estado |
+| `GET /ivoox/search?q=&type=` | Busca programas o episodios en iVoox |
+| `GET /ivoox/program?url=&page=` | Info de un programa + una página de sus episodios |
+| `GET /ivoox/audio?url=` | Retransmite el mp3 real de un episodio |
+| `GET /ivoox/image?url=` | Retransmite una portada (programa o episodio) |
+| `GET /ivoox/raw?url=` | HTML crudo de una URL de iVoox, solo para depurar el scraper |
+| `POST /pocketcasts/login` | Login contra Pocket Casts, devuelve el token de sesión |
+| `POST /pocketcasts/upload` | Sube el audio de un episodio a Archivos |
+| `POST /pocketcasts/upload-image` | Sube la portada de un episodio ya subido |
 
-Como es una API privada, puede cambiar sin aviso. Si el login o la subida
-empiezan a fallar, `worker/proxy-worker.js` (sección "Pocket Casts") es el
-único sitio que hay que tocar.
+**iVoox no tiene API pública.** El Worker interpreta directamente el HTML
+de sus páginas (dos plantillas distintas: la búsqueda usa microdatos
+`itemprop`, la ficha de programa es una SPA Nuxt con enlaces relativos).
+La exclusividad de un episodio se detecta por la clase real de su botón
+de reproducción (`round-play btn-fans` frente a `btn-primary`), y el mp3
+real se resuelve de forma determinista a partir del id del episodio
+(`listen_mn_<id>_1.mp3`), sin necesidad de re-scrapear nada. La lista de
+programas Originals se obtiene del catálogo dedicado de iVoox y se cachea
+6 horas, porque no hay ninguna marca de "Originals" fiable ni en la ficha
+de un programa ni en su tarjeta de búsqueda.
 
-## Estructura del repo
+**Pocket Casts tampoco tiene API pública.** El Worker reproduce el flujo
+que usan sus apps oficiales (reverse-engineered): `POST /user/login` para
+el token, y `POST /files/upload/request` con un mensaje **protobuf**
+(`uuid`, `title`, `size`, `contentType`, `hasCustomImage_p`) que devuelve
+una URL de S3 pre-firmada donde subir el audio. Si el episodio tiene
+portada, hay un segundo paso independiente — `POST /files/upload/image`
+con el mismo `uuid` — que da otra URL pre-firmada para la imagen; si ese
+segundo paso falla no bloquea nada, el episodio se queda sin portada
+propia. Todo el audio y la imagen se retransmiten en **streaming** de
+principio a fin: nunca se bufferiza el fichero entero en memoria del
+Worker, ni siquiera con episodios de varias horas.
+
+Como ninguna de las dos es una API pública documentada, **pueden cambiar
+sin aviso**. Si algo deja de funcionar (títulos raros, episodios que no
+aparecen, login o subida rotos), el sitio donde mirar es siempre
+`worker/proxy-worker.js`:
+
+1. Para iVoox: abre `https://TU-WORKER.workers.dev/ivoox/raw?url=<la-url-que-falla>`
+   para ver el HTML real que ve el Worker, y ajusta `parseProgramCards` /
+   `parseEpisodeCards` / `resolveAudioUrl` según lo que haya cambiado.
+2. Para Pocket Casts: la sección "Pocket Casts" del archivo, con el login
+   y las dos subidas (audio e imagen).
+
+---
+
+## Limitaciones y cosas a tener en cuenta
+
+- **Scraping best-effort.** No hay contrato estable con iVoox: un cambio
+  en su web puede romper la búsqueda o la lista de episodios hasta que se
+  actualice el Worker (ver sección anterior).
+- **Solo contenido público.** Los episodios exclusivos (Premium/Fans) no
+  se pueden descargar, a propósito.
+- **Búsqueda de episodios aproximada.** No hay forma de indexar episodios
+  sueltos por palabra clave contra iVoox; se buscan los programas más
+  afines y se filtran sus episodios. Para un episodio muy concreto suele
+  ir mejor abrir el programa y usar el buscador de esa lista.
+- **Cada usuario necesita su propio Worker.** No es una limitación
+  técnica sino de diseño: así ningún dato ni credencial pasa por un
+  servidor compartido.
+- **Límites del plan gratuito de Cloudflare Workers**: 100.000 peticiones
+  al día y un tope de tiempo de CPU activo por petición (no de tiempo de
+  espera de red, que es la mayor parte de lo que hace este Worker). De
+  sobra para uso personal; si algún día se superan, Cloudflare empieza a
+  devolver error hasta el día siguiente.
+- **Riesgo de bloqueo o incumplimiento de términos de servicio.** Tanto
+  raspar la web de iVoox como hablar la API privada de Pocket Casts
+  probablemente incumple los términos de uso de ambos servicios, aunque
+  el uso sea personal y legítimo. Un uso intensivo (muchas búsquedas o
+  descargas seguidas) aumenta el riesgo de que iVoox limite o bloquee el
+  tráfico.
+- **La subida de Archivos a Pocket Casts requiere una suscripción Pocket
+  Casts Plus.** Sin ella, Pocket Casts rechaza la solicitud.
+- **Sin persistencia.** No hay favoritos, ni historial de lo ya subido:
+  cada sesión empieza de cero (queda pendiente en el TODO local del
+  proyecto).
+
+---
+
+## Estructura del repositorio
 
 ```
-index.html              Esqueleto de la SPA (una sola página)
-css/styles.css           Diseño (claro/oscuro automático, responsive)
-js/main.js                Cableado de la UI y orquestación de vistas
-js/state.js                Store mínimo (búsqueda, programa, sesión, jobs)
-js/download.js              Flujo descargar → subir por episodio
-js/api/ivoox.js              Cliente contra los endpoints /ivoox/* del Worker
-js/api/pocketcasts.js         Cliente contra los endpoints /pocketcasts/* del Worker
-js/api/proxy.js                 fetch genérico hacia el Worker
-js/components/                   Tarjetas, estados (idle/empty/error), toasts
-worker/proxy-worker.js  El puente: scraping de iVoox + protobuf de Pocket Casts
-worker/wrangler.toml     Configuración de despliegue del Worker
+index.html                        Esqueleto de la SPA (una sola página)
+css/styles.css                    Diseño (claro/oscuro automático, responsive)
+
+js/main.js                        Cableado de la UI y orquestación de vistas
+js/state.js                       Store mínimo (búsqueda, programa, sesión, jobs)
+js/download.js                    Flujo descargar → subir por episodio
+js/utils.js                       Formateo, helpers varios
+
+js/api/ivoox.js                   Cliente contra los endpoints /ivoox/* del Worker
+js/api/pocketcasts.js             Cliente contra los endpoints /pocketcasts/* del Worker
+js/api/proxy.js                   fetch genérico + comprobación de salud del Worker
+
+js/components/cards.js            Tarjetas de programa/episodio, botones de acción
+js/components/episodeModal.js     Popup de "más información" de un episodio
+js/components/overlay.js          Apertura/cierre de paneles y popups
+js/components/states.js           Estados de carga, vacío y error
+js/components/toast.js            Notificaciones flotantes
+
+worker/proxy-worker.js            El puente: scraping de iVoox + protobuf de Pocket Casts
+worker/wrangler.toml              Configuración de despliegue del Worker
+
+.github/workflows/deploy.yml      Publicación automática en GitHub Pages
 ```
 
-## Límites conocidos
+---
 
-- Sin backend con más recursos, los ficheros de audio pasan en streaming a
-  través de tu Worker (dentro de los límites gratuitos de Cloudflare, de
-  sobra para episodios de podcast normales).
-- El scraping de iVoox es best-effort por definición: no hay contrato
-  estable que garantice que siga funcionando indefinidamente sin ajustes.
-- Solo se pueden descargar episodios de acceso público. Los exclusivos
-  (Premium) están bloqueados a propósito.
+## Licencia
 
-## Aviso
+[MIT](LICENSE).
 
-Herramienta personal no oficial, sin afiliación con iVoox ni con Pocket
-Casts. Úsala solo con tu propia cuenta y con contenido al que ya tengas
+---
+
+## Aviso de uso
+
+PodBridge es una herramienta personal, no oficial y sin afiliación con
+iVoox ni con Pocket Casts. Solo descarga audio de acceso público en
+iVoox — los episodios exclusivos quedan bloqueados a propósito — y solo
+sube contenido a la cuenta de Pocket Casts con la que te identifiques tú
+mismo. Úsala solo con tu propia cuenta y con contenido al que ya tengas
 acceso legítimo.
