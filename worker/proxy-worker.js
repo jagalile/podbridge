@@ -771,20 +771,31 @@ async function handlePocketCastsUploadEpisode(request, env) {
   // El audio se retransmite en streaming directo de iVoox a S3: nunca pasa
   // por memoria como un buffer completo, ni por el navegador.
   //
-  // Importante: pasar audioRes.body TAL CUAL como body de este segundo
-  // fetch (encadenar directamente el readable de una respuesta como
-  // request de otra) provoca un 413 al azar en ficheros grandes en el
-  // runtime de Workers — comprobado en la práctica con episodios de
-  // ~260-270 MB. Intercalar un TransformStream de identidad en medio (que
-  // no hace nada más que reenviar cada chunk) lo evita: fuerza un
-  // streaming incremental real en vez de lo que sea que intente hacer el
-  // runtime al unir directamente dos cuerpos de fetch.
-  const { readable, writable } = new TransformStream();
+  // Dos escollos, no uno, hacía falta resolver aquí:
+  //
+  //   1. Pasar audioRes.body TAL CUAL como body de este segundo fetch
+  //      (encadenar directamente el readable de una respuesta como
+  //      request de otra) provoca un 413 al azar en ficheros grandes en
+  //      el runtime de Workers — comprobado en la práctica con episodios
+  //      de ~260-270 MB.
+  //   2. Intercalar un TransformStream normal en medio arregla el 413,
+  //      pero el runtime de Workers manda un body de longitud
+  //      desconocida como "Transfer-Encoding: chunked" en cuanto el body
+  //      es un stream — y las URLs pre-firmadas de S3 (que es lo que hay
+  //      detrás de Pocket Casts) no soportan chunked en absoluto: lo
+  //      rechazan con un 501 "Not Implemented", aunque se mande también
+  //      la cabecera Content-Length a mano.
+  //
+  // FixedLengthStream es justo la pieza que faltaba: es un
+  // TransformStream especializado al que se le dice de antemano cuántos
+  // bytes va a pasar, y el runtime usa ese número como Content-Length real
+  // en vez de recurrir a chunked — con eso sí lo acepta S3.
+  const { readable, writable } = new FixedLengthStream(size);
   audioRes.body.pipeTo(writable).catch(() => {}); // el fetch de abajo ya reporta el error si esto se rompe
 
   const putRes = await fetch(presignedUrl, {
     method: "PUT",
-    headers: { "Content-Type": contentType, "Content-Length": String(size) },
+    headers: { "Content-Type": contentType },
     body: readable,
     duplex: "half",
     signal: AbortSignal.timeout(15 * 60 * 1000),

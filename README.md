@@ -303,13 +303,24 @@ obvias que se probaron antes y que fallan con episodios largos (~5h,
 Haciendo la descarga+subida del todo dentro del Worker se evita el primer
 límite (que solo aplica a lo que el Worker *recibe*, no a las peticiones
 que él mismo hace hacia fuera) y el problema de CORS no existe entre
-servidores. Un detalle no evidente: encadenar directamente el cuerpo de la
-respuesta de iVoox como cuerpo de la petición a Pocket Casts
-(`body: audioRes.body`) provoca un 413 aleatorio en ficheros grandes —
-hace falta intercalar un `TransformStream` de identidad en medio para que
-el streaming sea realmente incremental. La contrapartida de todo esto es
-que el navegador ya no puede pintar un progreso real en bytes durante esta
-fase (es una única petición de principio a fin): la UI la muestra como
+servidores. Quedaban dos detalles nada evidentes por resolver dentro de
+esto:
+
+- Encadenar directamente el cuerpo de la respuesta de iVoox como cuerpo
+  de la petición a Pocket Casts (`body: audioRes.body`) provoca un 413
+  aleatorio en ficheros grandes.
+- Intercalar un `TransformStream` normal en medio arregla el 413, pero el
+  runtime de Workers manda entonces el cuerpo como
+  `Transfer-Encoding: chunked` en cuanto es un stream de longitud
+  desconocida — y las URLs pre-firmadas de S3 (que es lo que hay detrás
+  de Pocket Casts) no soportan chunked, lo rechazan con un 501.
+
+La pieza que faltaba es `FixedLengthStream`, una API propia de Workers: un
+`TransformStream` al que se le dice de antemano cuántos bytes va a dejar
+pasar, y que el runtime usa entonces como `Content-Length` real en vez de
+recurrir a chunked. La contrapartida de todo este diseño es que el
+navegador ya no puede pintar un progreso real en bytes durante esta fase
+(es una única petición de principio a fin): la UI la muestra como
 indeterminada en vez de fingir un porcentaje. La portada, que siempre es
 pequeña, sigue subiendo desde el navegador con progreso real.
 
