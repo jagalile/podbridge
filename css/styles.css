@@ -595,6 +595,26 @@ code {
 }
 .field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .field-row { display: flex; align-items: center; gap: 12px; }
+
+/* Botón del ojo para mostrar/ocultar contraseñas y secretos. */
+.field-input-wrap { position: relative; }
+.field-input-wrap input { width: 100%; padding-right: 38px; }
+.field-toggle-visibility {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: 50%;
+  padding: 0;
+  transition: color .15s ease;
+}
+.field-toggle-visibility:hover, .field-toggle-visibility:focus-visible { color: var(--accent); }
 .field-status { font-size: 12.5px; color: var(--success); }
 
 /* Ficha de cuenta conectada: antes era una fila que envolvía mal con

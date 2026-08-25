@@ -28,6 +28,7 @@ import { imageProxyUrl } from "./api/ivoox.js";
 import { uploadEpisodeFromIvoox, uploadImage, requestEpisodeUploadInit, cancelEpisodeUpload } from "./api/pocketcasts.js";
 import { relayUpload } from "./api/relay.js";
 import { uuid, LARGE_EPISODE_BYTES } from "./utils.js";
+import { noteJobStarted, noteJobEnded } from "./wakelock.js";
 
 // Reparto del progreso 0..1 mostrado en la UI según haya o no portada que
 // subir. La fase "uploadEpisode" (audio de iVoox a Pocket Casts, por
@@ -123,6 +124,7 @@ export async function runEpisodeJob(episode) {
   const { signal } = controller;
   const touch = () => lastActivity.set(id, Date.now());
   touch();
+  noteJobStarted(); // mantiene la pantalla encendida mientras haya algo en curso — ver wakelock.js
 
   try {
     // El título se guarda en el propio job (no solo en el objeto episode)
@@ -196,6 +198,7 @@ export async function runEpisodeJob(episode) {
   } finally {
     controllers.delete(id);
     lastActivity.delete(id);
+    noteJobEnded();
   }
 }
 

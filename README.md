@@ -21,6 +21,7 @@ ninguna de las dos.
 - [Cómo funciona (arquitectura)](#cómo-funciona-arquitectura)
 - [Instalación y despliegue](#instalación-y-despliegue)
 - [Uso](#uso)
+- [Instalar como app](#instalar-como-app)
 - [Persistencia y seguridad](#persistencia-y-seguridad)
 - [Cómo funciona el Worker por dentro](#cómo-funciona-el-worker-por-dentro)
 - [Limitaciones y cosas a tener en cuenta](#limitaciones-y-cosas-a-tener-en-cuenta)
@@ -114,8 +115,17 @@ ninguna de las dos.
 **Interfaz**
 - Diseño responsive (escritorio y móvil), con tema claro/oscuro
   automático según el sistema.
-- Estados de carga (esqueletos), vacío y error cuidados en toda la app,
-  con opción de reintentar.
+- Instalable como app (PWA) tanto en escritorio como en móvil — icono
+  propio, sin barra de direcciones. Ver
+  [Instalar como app](#instalar-como-app).
+- Mientras haya una descarga o subida en curso, se evita que el propio
+  sistema apague la pantalla por inactividad (Screen Wake Lock API) —
+  sobre todo útil en móvil con episodios largos.
+- Botón de mostrar/ocultar en los campos de contraseña y secretos
+  (cuenta de Pocket Casts, servicio de relevo).
+- Estados de carga (esqueletos con la forma real de lo que va a
+  cargar), vacío y error cuidados en toda la app, con opción de
+  reintentar.
 - Aviso antes de cerrar o recargar la pestaña si hay una descarga o
   subida en curso.
 
@@ -221,6 +231,26 @@ Sin este paso, todo funciona igual salvo que los episodios de más de
 
 Los episodios marcados como **exclusivos** no tienen botón de descarga:
 es contenido de pago de iVoox y esta herramienta no lo toca.
+
+---
+
+## Instalar como app
+
+PodBridge es una PWA (Progressive Web App) — se puede instalar y usar
+como una app normal, con su propio icono, sin barra de direcciones ni
+pestañas del navegador alrededor:
+
+- **Android (Chrome)**: menú (⋮) → "Instalar app" o "Añadir a pantalla
+  de inicio".
+- **iOS (Safari)**: botón de compartir → "Añadir a pantalla de inicio".
+- **Escritorio (Chrome, Edge)**: icono de instalación en la barra de
+  direcciones, o menú → "Instalar PodBridge…".
+
+No tiene modo sin conexión a propósito (deliberadamente sin *service
+worker*): la app depende del Worker y, para episodios grandes, del
+relevo en todo momento — búsqueda, login, descargas, subidas... — así
+que no hay nada útil que se pudiera hacer sin internet. Instalarla solo
+cambia cómo se abre, no qué hace.
 
 ---
 
@@ -506,11 +536,14 @@ aparecen, login o subida rotos), el sitio donde mirar es siempre
 ```
 index.html                        Esqueleto de la SPA (una sola página)
 css/styles.css                    Diseño (claro/oscuro automático, responsive)
+manifest.webmanifest              Metadatos de instalación como PWA
+icons/                            Iconos de la app (fuente .svg + .png generados)
 
 js/main.js                        Cableado de la UI y orquestación de vistas
 js/state.js                       Store (búsqueda, programa, sesión, favoritos, historial, jobs)
 js/crypto-store.js                Cifrado AES-GCM del token recordado (clave no exportable en IndexedDB)
 js/download.js                    Flujo descargar → subir por episodio
+js/wakelock.js                    Mantiene la pantalla encendida mientras hay algo en curso
 js/utils.js                       Formateo, helpers varios
 
 js/api/ivoox.js                   Cliente contra los endpoints /ivoox/* del Worker

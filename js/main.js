@@ -94,6 +94,22 @@ wireStatusTooltip($("#jobs-status-btn"), $("#jobs-tooltip"));
 
 $("#close-settings").addEventListener("click", closeSettings);
 
+// Botón del ojo en los campos de contraseña/secreto: alterna entre
+// type="password" (puntos) y type="text" (en claro) mientras se pulsa,
+// y cambia el propio icono para que se note en qué estado se ha quedado.
+const EYE_ICON = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const EYE_OFF_ICON = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A11 11 0 0 1 12 5c7 0 11 7 11 7a13.2 13.2 0 0 1-3.2 3.9M6.5 6.6C3.4 8.4 1 12 1 12s4 7 11 7a10.5 10.5 0 0 0 4.1-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>`;
+document.querySelectorAll(".field-toggle-visibility").forEach((btn) => {
+  const input = $(`#${btn.dataset.for}`);
+  btn.innerHTML = EYE_ICON;
+  btn.addEventListener("click", () => {
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    btn.innerHTML = show ? EYE_OFF_ICON : EYE_ICON;
+    btn.setAttribute("aria-label", show ? "Ocultar" : "Mostrar");
+  });
+});
+
 $("#save-proxy").addEventListener("click", () => {
   const value = $("#proxy-url").value;
   if (value && !/^https?:\/\//.test(value)) {
