@@ -246,12 +246,12 @@ export function recordUpload(episode) {
 // una clave que nunca sale de este navegador, así que exportarlo no
 // serviría de nada en otro dispositivo — y meter cualquier cosa
 // relacionada con la cuenta en un fichero suelto es justo lo que no
-// interesa. Solo viajan favoritos, historial de subidas y la URL del
-// Worker (no es sensible, es solo la dirección de tu propio puente). El
-// secreto del servicio de relevo tampoco viaja nunca, por el mismo
-// motivo que la contraseña de Pocket Casts: es lo único que protege ese
-// servicio de que cualquiera lo use — su URL sí se incluye (no es
-// sensible por sí sola sin el secreto).
+// interesa. Sí viajan la URL del Worker y la URL + secreto del servicio
+// de relevo: a diferencia de la contraseña de Pocket Casts, son
+// configuración tuya (la dirección de tus propios servicios), no
+// credenciales de una cuenta de terceros — y sin el secreto habría que
+// volver a teclearlo a mano en cada importación, para nada. El archivo
+// exportado sigue sin incluir nada de la cuenta de Pocket Casts.
 // ---------------------------------------------------------------------------
 
 const EXPORT_FORMAT_VERSION = 1;
@@ -262,6 +262,7 @@ export function exportData() {
     exportedAt: new Date().toISOString(),
     proxyUrl: state.settings.proxyUrl,
     relayUrl: state.settings.relayUrl,
+    relaySecret: state.settings.relaySecret,
     favorites: state.favorites,
     uploadHistory: state.uploadHistory,
   };
@@ -285,6 +286,9 @@ export function importData(data, { merge = true } = {}) {
   }
   if (typeof data.relayUrl === "string" && data.relayUrl && !state.settings.relayUrl) {
     saveRelayUrl(data.relayUrl);
+  }
+  if (typeof data.relaySecret === "string" && data.relaySecret && !state.settings.relaySecret) {
+    saveRelaySecret(data.relaySecret);
   }
 
   if (Array.isArray(data.favorites)) {

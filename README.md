@@ -101,9 +101,10 @@ ninguna de las dos.
 - Los episodios ya subidos se recuerdan entre sesiones: si vuelves más
   tarde, siguen marcados como subidos en vez de ofrecerte subirlos otra
   vez.
-- Exportar/importar favoritos, historial y la URL del Worker como un
-  archivo JSON, para hacer copia de seguridad o pasarlos a otro navegador
-  — nunca incluye contraseñas ni el token de Pocket Casts.
+- Exportar/importar favoritos, historial, la URL del Worker y la
+  configuración del relevo (URL y secreto) como un archivo JSON, para
+  hacer copia de seguridad o pasarlos a otro navegador — nunca incluye
+  contraseñas ni el token de Pocket Casts.
 
 **Interfaz**
 - Diseño responsive (escritorio y móvil), con tema claro/oscuro
@@ -227,7 +228,7 @@ de datos ni backend propio. Qué se guarda, dónde y por qué:
 | Dato | Dónde | Cifrado | Notas |
 |---|---|---|---|
 | URL del Worker | `localStorage` | — | No es sensible |
-| URL y secreto del servicio de relevo | `localStorage` | — | El secreto no es una credencial de Pocket Casts, pero protege ese servicio — no se incluye en la exportación de datos |
+| URL y secreto del servicio de relevo | `localStorage` | — | No es una credencial de Pocket Casts, es configuración tuya — sí se incluye en la exportación de datos |
 | Favoritos | `localStorage` | — | No es sensible |
 | Episodios ya subidos | `localStorage` | — | No es sensible |
 | Token de Pocket Casts (sesión activa) | `sessionStorage` | — | Se borra al cerrar la pestaña |
