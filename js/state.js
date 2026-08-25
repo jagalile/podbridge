@@ -271,8 +271,13 @@ export function exportData() {
 /**
  * @param {object} data el JSON ya parseado
  * @param {{merge?: boolean}} opts merge=true (por defecto) añade a lo que
- *   ya hay; merge=false sustituye favoritos e historial por completo.
- * @returns {{favorites:number, uploads:number, proxyUrlApplied:boolean}}
+ *   ya hay; merge=false sustituye favoritos e historial por completo. La
+ *   URL del Worker y la configuración del relevo, si vienen en el
+ *   archivo, siempre sustituyen a lo que hubiera — igual que se espera de
+ *   "importar" cualquier otro dato: si no quieres pisar lo que ya tienes,
+ *   la forma de evitarlo es no importar, no que la importación se quede
+ *   callada sin hacer nada.
+ * @returns {{favorites:number, uploads:number, proxyUrlApplied:boolean, relayUrlApplied:boolean, relaySecretApplied:boolean}}
  */
 export function importData(data, { merge = true } = {}) {
   if (!data || typeof data !== "object") {
@@ -280,15 +285,19 @@ export function importData(data, { merge = true } = {}) {
   }
 
   let proxyUrlApplied = false;
-  if (typeof data.proxyUrl === "string" && data.proxyUrl && !state.settings.proxyUrl) {
+  if (typeof data.proxyUrl === "string" && data.proxyUrl) {
     saveProxyUrl(data.proxyUrl);
     proxyUrlApplied = true;
   }
-  if (typeof data.relayUrl === "string" && data.relayUrl && !state.settings.relayUrl) {
+  let relayUrlApplied = false;
+  if (typeof data.relayUrl === "string" && data.relayUrl) {
     saveRelayUrl(data.relayUrl);
+    relayUrlApplied = true;
   }
-  if (typeof data.relaySecret === "string" && data.relaySecret && !state.settings.relaySecret) {
+  let relaySecretApplied = false;
+  if (typeof data.relaySecret === "string" && data.relaySecret) {
     saveRelaySecret(data.relaySecret);
+    relaySecretApplied = true;
   }
 
   if (Array.isArray(data.favorites)) {
@@ -309,6 +318,8 @@ export function importData(data, { merge = true } = {}) {
     favorites: state.favorites.length,
     uploads: Object.keys(state.uploadHistory).length,
     proxyUrlApplied,
+    relayUrlApplied,
+    relaySecretApplied,
   };
 }
 

@@ -29,10 +29,19 @@ const episodeFilterEl = $("#program-episode-filter");
 // ---------------------------------------------------------------------------
 const settingsPanel = $("#settings-panel");
 
-function openSettings() {
+/** Refleja en los campos del panel lo que haya en el store — hace falta
+ * llamarlo no solo al abrir Ajustes, sino también tras importar datos
+ * (el panel de "Tus datos" vive dentro del propio panel de Ajustes, así
+ * que puede seguir abierto con los campos ya pintados con los valores
+ * viejos cuando la importación cambia la URL del Worker o el relevo). */
+function syncSettingsFields() {
   $("#proxy-url").value = state.settings.proxyUrl;
   $("#relay-url").value = state.settings.relayUrl;
   $("#relay-secret").value = state.settings.relaySecret;
+}
+
+function openSettings() {
+  syncSettingsFields();
   openOverlay(settingsPanel);
 }
 function closeSettings() {
@@ -204,11 +213,19 @@ importInput.addEventListener("change", async () => {
     const text = await file.text();
     const data = JSON.parse(text);
     const result = importData(data, { merge: true });
+
+    const settingsApplied = [
+      result.proxyUrlApplied && "la URL del Worker",
+      result.relayUrlApplied && "el relevo",
+      result.relaySecretApplied && "su secreto",
+    ].filter(Boolean);
     toast(
       `Importado: ${result.favorites} favoritos, ${result.uploads} episodios en el historial` +
-        (result.proxyUrlApplied ? " y la URL del Worker" : ""),
+        (settingsApplied.length ? ` y ${settingsApplied.join(", ")}` : ""),
       "success",
     );
+    syncSettingsFields(); // el panel de ajustes puede seguir abierto con los campos desactualizados
+    if (result.proxyUrlApplied) checkWorker();
     render();
   } catch (err) {
     toast(`No se ha podido importar el archivo: ${err.message}`, "error");
