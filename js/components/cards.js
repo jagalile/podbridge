@@ -2,7 +2,7 @@
 // (resultado de búsqueda) y fila de episodio (dentro de un programa).
 // Todas comparten el botón de acción de descarga/subida.
 
-import { clone, fmtDuration, fmtDate, escapeHtml } from "../utils.js";
+import { clone, fmtDuration, fmtDate, fmtBytes, escapeHtml } from "../utils.js";
 import { getJob, isFavorite, toggleFavorite } from "../state.js";
 
 const FALLBACK_COVER =
@@ -91,6 +91,7 @@ function metaHtml(episode) {
   const bits = [];
   if (episode.date) bits.push(escapeHtml(fmtDate(episode.date)));
   if (episode.duration) bits.push(escapeHtml(fmtDuration(episode.duration)));
+  if (episode.sizeBytes) bits.push(escapeHtml(fmtBytes(episode.sizeBytes)));
   let html = bits.map((b) => `<span>${b}</span>`).join(" · ");
   if (episode.isOriginal) html += ` <span class="tag-original">Originals</span>`;
   if (episode.isExclusive) html += ` <span class="tag-exclusive">🔒 Exclusivo</span>`;

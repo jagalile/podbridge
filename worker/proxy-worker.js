@@ -72,6 +72,8 @@ export default {
           return handleRaw(url, env);
         case "POST /pocketcasts/login":
           return handlePocketCastsLogin(request, env);
+        case "GET /pocketcasts/usage":
+          return handlePocketCastsUsage(request, env);
         case "POST /pocketcasts/upload":
           return handlePocketCastsUpload(request, env);
         case "POST /pocketcasts/upload-image":
@@ -490,8 +492,36 @@ async function handleProgram(url, env) {
     program: info.title,
     isOriginal: info.isOriginal,
   }));
+  await attachEpisodeSizes(episodes);
 
   return json({ info, episodes, page, hasMore: episodes.length >= EPISODES_PER_PAGE }, env);
+}
+
+/**
+ * Añade `sizeBytes` a cada episodio descargable con una petición HEAD en
+ * paralelo (no descarga el audio, solo mira el Content-Length). Si alguna
+ * falla o el CDN no devuelve el encabezado, ese episodio se queda sin
+ * tamaño en vez de romper el listado entero.
+ */
+async function attachEpisodeSizes(episodes) {
+  await Promise.allSettled(
+    episodes.map(async (ep) => {
+      if (!ep.downloadUrl) return;
+      const audioUrl = resolveAudioUrl(ep.downloadUrl);
+      if (!audioUrl) return;
+      try {
+        const res = await fetch(audioUrl, {
+          method: "HEAD",
+          headers: { ...BROWSER_HEADERS, Referer: ep.downloadUrl },
+          signal: AbortSignal.timeout(5000),
+        });
+        const len = res.headers.get("Content-Length");
+        if (len) ep.sizeBytes = Number(len);
+      } catch {
+        // sin tamaño para este episodio, no pasa nada
+      }
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -599,6 +629,33 @@ async function handlePocketCastsLogin(request, env) {
   }
   const data = await res.json();
   return json({ token: data.token }, env);
+}
+
+/**
+ * Espacio usado/disponible en Archivos de Pocket Casts. `Files_AccountUsage`
+ * (protobuf): campo 1 = totalSize, campo 2 = usedSize, campo 3 = totalFiles
+ * (todo en bytes salvo totalFiles). Endpoint reverse-engineered de la app
+ * oficial, igual que el resto de la sección Pocket Casts.
+ */
+async function handlePocketCastsUsage(request, env) {
+  const authHeader = request.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  if (!token) return errorResponse("Falta el token de Pocket Casts", env, 401);
+
+  const res = await fetch("https://api.pocketcasts.com/files/usage/", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    return errorResponse(`Pocket Casts respondió ${res.status} al consultar el espacio usado`, env, res.status);
+  }
+
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const fields = decodeProtobufVarintFields(bytes, [1, 2, 3]);
+  return json(
+    { totalBytes: fields[1] ?? null, usedBytes: fields[2] ?? null, totalFiles: fields[3] ?? null },
+    env,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -799,6 +856,31 @@ function decodeProtobufStringField(bytes, fieldNum) {
 const decodeFileUploadResponseUrl = (bytes) => decodeProtobufStringField(bytes, 2);
 // Files_ImageUploadResponse: campo 1 = url (mensaje más simple, sin uuid).
 const decodeImageUploadResponseUrl = (bytes) => decodeProtobufStringField(bytes, 1);
+
+/** Lee los campos numéricos (varint) de `wantedFieldNums` de un mensaje protobuf. */
+function decodeProtobufVarintFields(bytes, wantedFieldNums) {
+  const wanted = new Set(wantedFieldNums);
+  const result = {};
+  let pos = 0;
+  while (pos < bytes.length) {
+    const [tag, afterTag] = readVarint(bytes, pos);
+    pos = afterTag;
+    const num = tag >> 3;
+    const wireType = tag & 7;
+
+    if (wireType === 0) {
+      const [value, next] = readVarint(bytes, pos);
+      pos = next;
+      if (wanted.has(num)) result[num] = value;
+    } else if (wireType === 2) {
+      const [len, afterLen] = readVarint(bytes, pos);
+      pos = afterLen + len;
+    } else {
+      break; // wire type no soportado (no debería aparecer en este mensaje)
+    }
+  }
+  return result;
+}
 
 function readVarint(bytes, pos) {
   let result = 0n;

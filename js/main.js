@@ -2,7 +2,7 @@ import {
   state, subscribe, saveProxyUrl, setWorkerStatus, setPocketCasts, logoutPocketCasts, getJob,
   isFavorite, toggleFavorite, recordUpload,
   rememberMeSupported, persistPocketCastsSession, restorePersistedPocketCastsSession,
-  exportData, importData,
+  exportData, importData, setUsage,
 } from "./state.js";
 import * as ivoox from "./api/ivoox.js";
 import * as pocketcasts from "./api/pocketcasts.js";
@@ -13,7 +13,7 @@ import { skeletonGrid, idleState, emptyState, emptyFavoritesState, errorState, p
 import { renderProgramCard, renderEpisodeCard, renderEpisodeRow, applyJobState, actionButton } from "./components/cards.js";
 import { openOverlay, closeOverlay } from "./components/overlay.js";
 import { openEpisodeModal } from "./components/episodeModal.js";
-import { debounce, escapeHtml } from "./utils.js";
+import { debounce, escapeHtml, fmtBytes } from "./utils.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -103,9 +103,9 @@ $("#pc-login-form").addEventListener("submit", async (e) => {
     const token = await pocketcasts.login(email, password);
     setPocketCasts({ status: "connected", email, token, error: "", remember });
     $("#pc-password").value = "";
-    $("#pc-remember").checked = false;
     await persistPocketCastsSession(remember, email, token);
     toast(remember ? "Conectado a Pocket Casts (sesión recordada en este dispositivo)" : "Conectado a Pocket Casts", "success");
+    loadUsage();
   } catch (err) {
     setPocketCasts({ status: "error", error: err.message });
     errorEl.textContent = err.message;
@@ -120,11 +120,13 @@ $("#pc-logout-btn").addEventListener("click", () => {
   render();
 });
 
-// Se puede activar/desactivar "recordarme" en cualquier momento estando ya
-// conectado, no solo en el instante del login — si no, quien inició sesión
-// antes de marcar la casilla (o antes de que existiera esta opción) no
-// tenía forma de verla ni de usarla sin desconectar y volver a entrar.
-$("#pc-remember-connected").addEventListener("change", async (e) => {
+// Un único interruptor "recordarme", siempre en el mismo sitio, que sirve
+// tanto antes de conectar (se aplica en el submit de arriba) como ya
+// conectado (se aplica al momento aquí mismo) — antes había dos casillas
+// distintas según el estado, y quien conectaba antes de que existiera esta
+// opción (o sin marcarla) no tenía forma de activarla sin desconectar.
+$("#pc-remember").addEventListener("change", async (e) => {
+  if (state.pocketcasts.status !== "connected") return; // se decide al conectar, ver submit de arriba
   const checked = e.target.checked;
   setPocketCasts({ remember: checked });
   await persistPocketCastsSession(checked, state.pocketcasts.email, state.pocketcasts.token);
@@ -132,9 +134,20 @@ $("#pc-remember-connected").addEventListener("change", async (e) => {
   render();
 });
 
+/** Consulta el espacio usado en Archivos de Pocket Casts (silencioso si falla). */
+async function loadUsage() {
+  if (state.pocketcasts.status !== "connected") return;
+  try {
+    const usage = await pocketcasts.getUsage(state.pocketcasts.token);
+    setUsage(usage);
+  } catch {
+    // no es crítico; si falla, simplemente no se muestra la barra de uso
+  }
+}
+
 // Restaura la sesión de Pocket Casts si el usuario activó "recordarme" en
 // una visita anterior (token cifrado en localStorage, ver state.js).
-restorePersistedPocketCastsSession().then(render);
+restorePersistedPocketCastsSession().then(() => { render(); loadUsage(); });
 
 // ---------------------------------------------------------------------------
 // Exportar / importar datos (favoritos, historial, URL del Worker)
@@ -569,11 +582,20 @@ function render() {
   $("#pc-login-btn").disabled = pc.status === "connecting";
   if (!connected) $("#pc-email").value = pc.email;
 
-  const rememberSupported = rememberMeSupported();
-  $("#pc-remember-field").hidden = !rememberSupported || connected;
-  $("#pc-remember-connected-field").hidden = !rememberSupported || !connected;
-  $("#pc-remember-connected").checked = pc.remember;
+  $("#pc-remember-field").hidden = !rememberMeSupported();
+  $("#pc-remember").checked = pc.remember;
   $("#pc-remember-hint").hidden = !(connected && pc.remember);
+
+  const usageEl = $("#pc-usage");
+  usageEl.hidden = !(connected && pc.usage);
+  if (connected && pc.usage) {
+    const { usedBytes, totalBytes } = pc.usage;
+    const pct = totalBytes ? Math.min(100, Math.round((usedBytes / totalBytes) * 100)) : 0;
+    $("#pc-usage-text").textContent = `${fmtBytes(usedBytes)} de ${fmtBytes(totalBytes)} (${pct}%)`;
+    const fill = $("#pc-usage-fill");
+    fill.style.width = `${pct}%`;
+    fill.classList.toggle("is-full", pct >= 90);
+  }
 
   document.querySelectorAll(".action-btn[data-episode-id]").forEach((btn) => {
     const id = btn.dataset.episodeId;

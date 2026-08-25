@@ -16,6 +16,12 @@ export async function login(email, password) {
   }
 }
 
+/** Espacio usado/disponible en Archivos de Pocket Casts, en bytes. */
+export async function getUsage(token) {
+  const res = await request("/pocketcasts/usage", { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+
 /**
  * Sube un episodio a Archivos de Pocket Casts.
  *

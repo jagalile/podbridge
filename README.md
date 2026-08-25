@@ -70,9 +70,12 @@ ninguna de las dos.
 - "Recordarme en este dispositivo" (opcional): mantiene la sesión de
   Pocket Casts entre visitas sin volver a pedir la contraseña, con el
   token cifrado en el navegador — ver [Persistencia y seguridad](#persistencia-y-seguridad).
-- Indicador de estado combinado en la cabecera: si el Worker no está
-  configurado, si no responde, o el estado real de la sesión de Pocket
-  Casts — de un vistazo sabes qué falla si algo no funciona.
+- Espacio usado en Archivos de Pocket Casts (barra con porcentaje, y
+  cuánto ocupa cada episodio en su propia fila), para saber cuánto sitio
+  te queda antes de que se llene.
+- Indicador de estado combinado en la cabecera: al pasar el ratón o
+  pulsarlo se ve el detalle del Worker y de Pocket Casts por separado —
+  de un vistazo sabes cuál de los dos falla si algo no funciona.
 
 **Favoritos e historial**
 - Marca programas como favoritos con un toque (desde la tarjeta de
@@ -221,8 +224,8 @@ página (XSS): con acceso de ejecución en el origen, podría pedir al
 navegador que descifre igual que hace la app. Es defensa en profundidad
 frente a acceso pasivo a los datos guardados, no una garantía absoluta —
 por eso sigue siendo opcional, y por eso no se te pide activarlo. En un
-ordenador compartido, mejor no activarlo: usa "Olvidar este dispositivo"
-para borrar la sesión recordada en cualquier momento.
+ordenador compartido, mejor no activarlo — el mismo interruptor sirve para
+olvidar la sesión recordada en cualquier momento, basta con desactivarlo.
 
 ---
 
@@ -239,8 +242,15 @@ para borrar la sesión recordada en cualquier momento.
 | `GET /ivoox/image?url=` | Retransmite una portada (programa o episodio) |
 | `GET /ivoox/raw?url=` | HTML crudo de una URL de iVoox, solo para depurar el scraper |
 | `POST /pocketcasts/login` | Login contra Pocket Casts, devuelve el token de sesión |
+| `GET /pocketcasts/usage` | Espacio usado/disponible en Archivos (bytes) |
 | `POST /pocketcasts/upload` | Sube el audio de un episodio a Archivos |
 | `POST /pocketcasts/upload-image` | Sube la portada de un episodio ya subido |
+
+El tamaño de cada episodio que se ve en la lista sale de una petición
+`HEAD` en paralelo por episodio (solo mira `Content-Length`, no descarga
+nada) al listar los episodios de un programa — si alguna falla o el CDN no
+manda ese encabezado, ese episodio simplemente se queda sin tamaño en vez
+de romper el listado entero.
 
 **iVoox no tiene API pública.** El Worker interpreta directamente el HTML
 de sus páginas (dos plantillas distintas: la búsqueda usa microdatos

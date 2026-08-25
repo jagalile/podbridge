@@ -145,6 +145,14 @@
         </div>
         <p class="hint">Tus credenciales viajan directamente a tu propio Worker y de ahí a Pocket Casts — nunca se guardan en un servidor de terceros. La contraseña nunca se guarda en ningún sitio.</p>
 
+        <div id="pc-connected-info" class="pc-account-card" hidden>
+          <div>
+            <p class="pc-account-label">Conectado como</p>
+            <p class="pc-account-email" id="pc-connected-email"></p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" id="pc-logout-btn">Desconectar</button>
+        </div>
+
         <form id="pc-login-form" class="pc-login-form">
           <div id="pc-login-fields">
             <label class="field">
@@ -155,24 +163,13 @@
               <span>Contraseña</span>
               <input id="pc-password" type="password" autocomplete="current-password" required />
             </label>
-            <label class="switch-field" id="pc-remember-field">
-              <span class="switch"><input id="pc-remember" type="checkbox" /><span class="switch-track"><span class="switch-thumb"></span></span></span>
-              <span>Recordarme en este dispositivo (token cifrado)</span>
-            </label>
             <button type="submit" class="btn btn-primary" id="pc-login-btn">Conectar</button>
           </div>
           <p id="pc-login-error" class="field-error" hidden></p>
         </form>
 
-        <div id="pc-connected-info" class="pc-account-card" hidden>
-          <div>
-            <p class="pc-account-label">Conectado como</p>
-            <p class="pc-account-email" id="pc-connected-email"></p>
-          </div>
-          <button type="button" class="btn btn-ghost btn-sm" id="pc-logout-btn">Desconectar</button>
-        </div>
-        <label class="switch-field" id="pc-remember-connected-field" hidden>
-          <span class="switch"><input id="pc-remember-connected" type="checkbox" /><span class="switch-track"><span class="switch-thumb"></span></span></span>
+        <label class="switch-field" id="pc-remember-field">
+          <span class="switch"><input id="pc-remember" type="checkbox" /><span class="switch-track"><span class="switch-thumb"></span></span></span>
           <span>Recordarme en este dispositivo (token cifrado)</span>
         </label>
         <p class="hint hint-small" id="pc-remember-hint" hidden>
@@ -181,6 +178,14 @@
           en un ordenador compartido — desactiva el interruptor de arriba
           para olvidarla en cualquier momento.
         </p>
+
+        <div class="pc-usage" id="pc-usage" hidden>
+          <div class="pc-usage-row">
+            <span>Archivos en la nube</span>
+            <span id="pc-usage-text"></span>
+          </div>
+          <div class="pc-usage-bar"><div class="pc-usage-bar-fill" id="pc-usage-fill"></div></div>
+        </div>
       </section>
 
       <section class="settings-card">

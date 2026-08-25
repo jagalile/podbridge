@@ -1,4 +1,4 @@
-import { fmtDate, fmtDuration, escapeHtml } from "../utils.js";
+import { fmtDate, fmtDuration, fmtBytes, escapeHtml } from "../utils.js";
 import { openOverlay, closeOverlay } from "./overlay.js";
 
 const modalEl = document.getElementById("episode-modal");
@@ -20,6 +20,7 @@ export function openEpisodeModal(episode, onAction, buildActionButton) {
   const metaBits = [];
   if (episode.date) metaBits.push(escapeHtml(fmtDate(episode.date)));
   if (episode.duration) metaBits.push(escapeHtml(fmtDuration(episode.duration)));
+  if (episode.sizeBytes) metaBits.push(escapeHtml(fmtBytes(episode.sizeBytes)));
 
   const description = (episode.description || "").trim();
 

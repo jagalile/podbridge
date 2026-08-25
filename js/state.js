@@ -47,6 +47,8 @@ export const state = {
     status: sessionStorage.getItem("pb.pc.token") ? "connected" : "disconnected", // disconnected | connecting | connected | error
     error: "",
     remember: localStorage.getItem(REMEMBER_KEY) === "1",
+    // Espacio en Archivos de Pocket Casts (bytes). null hasta que se consulta.
+    usage: null, // { usedBytes, totalBytes, totalFiles }
   },
   search: {
     type: "program",       // "program" | "episode" | "favorites"
@@ -121,8 +123,13 @@ export function setPocketCasts(patch) {
   notify();
 }
 
+export function setUsage(usage) {
+  state.pocketcasts.usage = usage;
+  notify();
+}
+
 export function logoutPocketCasts() {
-  setPocketCasts({ token: "", email: "", status: "disconnected", error: "", remember: false });
+  setPocketCasts({ token: "", email: "", status: "disconnected", error: "", remember: false, usage: null });
   clearPersistedPocketCastsSession();
 }
 
