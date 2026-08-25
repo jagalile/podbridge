@@ -402,8 +402,9 @@ gratuito con despliegue automático desde GitHub:
 1. En el [dashboard de Render](https://dashboard.render.com), **New →
    Web Service** y conecta tu fork de este repositorio.
 2. **Root Directory**: `relay-service`.
-3. **Runtime**: Node. **Build Command**: déjalo vacío (no hay
-   dependencias que instalar). **Start Command**: `npm start`.
+3. **Runtime**: Node. **Build Command**: `npm install` (Render exige
+   algo en este campo, aunque no hay ninguna dependencia que instalar).
+   **Start Command**: `npm start`.
 4. **Instance Type**: Free.
 5. En **Environment**, añade dos variables:
    - `RELAY_SECRET`: una cadena aleatoria larga que te inventes (por
