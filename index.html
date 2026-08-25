@@ -48,6 +48,16 @@
             </div>
           </div>
         </div>
+        <div class="jobs-status-wrap" id="jobs-status-wrap" hidden>
+          <button id="jobs-status-btn" class="pc-status" type="button" aria-expanded="false" aria-controls="jobs-tooltip">
+            <span class="spinner" aria-hidden="true"></span>
+            <span id="jobs-status-label">0 en curso</span>
+          </button>
+          <div id="jobs-tooltip" class="status-tooltip jobs-tooltip" role="tooltip">
+            <p class="jobs-tooltip-empty" id="jobs-tooltip-empty">No hay descargas ni subidas en curso.</p>
+            <div id="jobs-tooltip-list" class="jobs-tooltip-list"></div>
+          </div>
+        </div>
         <button id="open-settings" class="icon-btn" type="button" title="Ajustes" aria-haspopup="dialog" aria-controls="settings-panel">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 2.5h3.4l.6 2.7a7.7 7.7 0 0 1 2 1.16l2.6-.87 1.7 2.95-2.1 1.83a7.8 7.8 0 0 1 0 2.32l2.1 1.83-1.7 2.95-2.6-.87a7.7 7.7 0 0 1-2 1.16l-.6 2.7h-3.4l-.6-2.7a7.7 7.7 0 0 1-2-1.16l-2.6.87-1.7-2.95 2.1-1.83a7.8 7.8 0 0 1 0-2.32l-2.1-1.83 1.7-2.95 2.6.87a7.7 7.7 0 0 1 2-1.16z"/><circle cx="12" cy="12" r="3.1"/></svg>
         </button>

@@ -39,27 +39,31 @@ function closeSettings() {
 $("#open-settings").addEventListener("click", openSettings);
 
 // ---------------------------------------------------------------------------
-// Tooltip de estado (Worker + Pocket Casts por separado)
+// Tooltips de la cabecera (estado de conexión, descargas/subidas en curso)
 //
-// El botón de estado ya no abre Ajustes — eso ya lo hace el engranaje de
-// al lado, y hacerlo dos veces era redundante. Ahora solo enseña un
-// resumen genérico y, al pasar el ratón o al pulsarlo (para pantallas
-// táctiles, donde no hay hover), un detalle de cada conexión.
-const statusTooltip = $("#status-tooltip");
-const pcStatusBtn = $("#pc-status-btn");
+// Ninguno de los dos abre Ajustes — eso ya lo hace el engranaje de al
+// lado. Cada uno enseña un resumen corto en la pastilla y, al pasar el
+// ratón o al pulsarla (para pantallas táctiles, donde no hay hover), un
+// detalle en un popover propio. Misma mecánica para los dos, así que va
+// en una única función en vez de duplicar el código de apertura/cierre.
+function wireStatusTooltip(triggerEl, tooltipEl) {
+  triggerEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const willOpen = !tooltipEl.classList.contains("is-open");
+    tooltipEl.classList.toggle("is-open", willOpen);
+    triggerEl.setAttribute("aria-expanded", String(willOpen));
+  });
+  document.addEventListener("click", (e) => {
+    if (!tooltipEl.classList.contains("is-open")) return;
+    if (e.target === triggerEl || triggerEl.contains(e.target)) return;
+    tooltipEl.classList.remove("is-open");
+    triggerEl.setAttribute("aria-expanded", "false");
+  });
+}
 
-pcStatusBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  const willOpen = !statusTooltip.classList.contains("is-open");
-  statusTooltip.classList.toggle("is-open", willOpen);
-  pcStatusBtn.setAttribute("aria-expanded", String(willOpen));
-});
-document.addEventListener("click", (e) => {
-  if (!statusTooltip.classList.contains("is-open")) return;
-  if (e.target === pcStatusBtn || pcStatusBtn.contains(e.target)) return;
-  statusTooltip.classList.remove("is-open");
-  pcStatusBtn.setAttribute("aria-expanded", "false");
-});
+wireStatusTooltip($("#pc-status-btn"), $("#status-tooltip"));
+wireStatusTooltip($("#jobs-status-btn"), $("#jobs-tooltip"));
+
 $("#close-settings").addEventListener("click", closeSettings);
 
 $("#save-proxy").addEventListener("click", () => {
@@ -609,7 +613,43 @@ function render() {
     if (episode) applyJobState(btn, episode);
   });
 
+  renderActiveJobs();
+
   if (state.search.type === "favorites" && !state.program.open) renderFavorites();
+}
+
+/**
+ * Indicador global de descargas/subidas en curso, con su propio popover
+ * (mismo patrón que el de estado de conexión). El título de cada fila
+ * sale del propio job (ver download.js), no de las listas de resultados
+ * actuales — así sigue viéndose aunque el usuario haya navegado a otra
+ * búsqueda mientras el episodio seguía en marcha.
+ */
+function renderActiveJobs() {
+  const active = [...state.jobs.entries()].filter(
+    ([, job]) => job.status === "downloading" || job.status === "uploading",
+  );
+
+  $("#jobs-status-wrap").hidden = active.length === 0;
+  if (active.length === 0) return;
+
+  $("#jobs-status-label").textContent = active.length === 1 ? "1 en curso" : `${active.length} en curso`;
+
+  const listEl = $("#jobs-tooltip-list");
+  $("#jobs-tooltip-empty").hidden = true;
+  listEl.innerHTML = active
+    .map(([id, job]) => {
+      const pct = Math.round((job.progress || 0) * 100);
+      const statusText = job.status === "downloading" ? `Descargando… ${pct}%` : `Subiendo… ${pct}%`;
+      return `
+        <div class="job-row" data-episode-id="${id}">
+          <p class="job-row-title">${escapeHtml(job.title || "Episodio")}</p>
+          <p class="job-row-status">${statusText}</p>
+          <div class="job-row-bar"><div class="job-row-bar-fill" style="width:${pct}%"></div></div>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 // Refrescar/cerrar la pestaña corta de raíz cualquier descarga o subida en

@@ -37,7 +37,11 @@ export async function runEpisodeJob(episode) {
   let base = 0;
 
   try {
-    setJob(id, { status: "downloading", progress: 0, error: "" });
+    // El título se guarda en el propio job (no solo en el objeto episode)
+    // para que el indicador global de descargas/subidas en curso pueda
+    // enseñarlo aunque el usuario navegue a otra búsqueda u otro programa
+    // mientras tanto y el episodio deje de estar en las listas cargadas.
+    setJob(id, { status: "downloading", progress: 0, error: "", title: episode.title });
     const audioBlob = await downloadBinary(
       audioProxyUrl(state.settings.proxyUrl, episode.downloadUrl),
       (p) => setJob(id, { progress: base + p * w.downloadAudio }),

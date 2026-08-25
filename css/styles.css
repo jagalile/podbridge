@@ -137,7 +137,7 @@ code {
    engranaje de al lado, y hacer lo mismo dos veces era redundante):
    ahora solo enseña un resumen genérico y, al pasar el ratón o pulsar,
    un detalle del Worker y de Pocket Casts por separado. */
-.pc-status-wrap { position: relative; }
+.pc-status-wrap, .jobs-status-wrap { position: relative; }
 .status-tooltip {
   position: absolute;
   top: calc(100% + 8px);
@@ -155,6 +155,8 @@ code {
 }
 .pc-status-wrap:hover .status-tooltip,
 .pc-status-wrap:focus-within .status-tooltip,
+.jobs-status-wrap:hover .status-tooltip,
+.jobs-status-wrap:focus-within .status-tooltip,
 .status-tooltip.is-open {
   display: flex;
 }
@@ -162,6 +164,22 @@ code {
 .status-tooltip-row .pc-dot { margin-top: 5px; }
 .status-tooltip-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); margin: 0; }
 .status-tooltip-text { font-size: 13px; margin: 2px 0 0; word-break: break-word; }
+
+/* Indicador de descargas/subidas en curso — mismo patrón que el de
+   conexión (pastilla + tooltip al hover/click), pero con una lista de
+   episodios y su progreso individual en vez de dos líneas fijas. */
+.jobs-status.pc-status { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.jobs-status .spinner { color: var(--accent); }
+.jobs-tooltip { width: 280px; max-height: 320px; overflow-y: auto; }
+.jobs-tooltip-empty { font-size: 13px; color: var(--text-muted); margin: 0; }
+.jobs-tooltip-list { display: flex; flex-direction: column; gap: 10px; }
+.job-row-title {
+  font-size: 13px; font-weight: 700; margin: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.job-row-status { font-size: 12px; color: var(--text-muted); margin: 2px 0 4px; }
+.job-row-bar { height: 4px; border-radius: 999px; background: var(--bg-sunken); overflow: hidden; }
+.job-row-bar-fill { height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s ease; }
 
 .icon-btn {
   width: 38px; height: 38px;

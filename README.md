@@ -61,6 +61,10 @@ ninguna de las dos.
 - Streaming de extremo a extremo: los ficheros de audio no se cargan
   enteros en memoria en ningún punto, así que episodios largos (varias
   horas) no deberían colgar la subida.
+- Se pueden lanzar varias descargas/subidas a la vez (no hay cola: cada
+  episodio va por su cuenta) — un indicador en la cabecera muestra
+  cuántas hay en curso y, al pasar el ratón o pulsarlo, el progreso
+  individual de cada una.
 
 **Cuenta y estado**
 - Conexión con Pocket Casts mediante email y contraseña; las
