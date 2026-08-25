@@ -27,19 +27,40 @@ export async function login(email, password) {
  * colgada sin avisar.
  *
  * @param {Blob} fileBlob audio ya descargado
- * @param {{title:string, contentType:string}} meta
+ * @param {{title:string, contentType:string, hasImage?:boolean}} meta
  * @param {string} token
  * @param {(progress:number)=>void} onProgress 0..1, solo durante la subida
+ * @returns {Promise<{uuid:string, title:string}>}
  */
 export async function uploadFile(fileBlob, meta, token, onProgress) {
   const contentType = meta.contentType || "audio/mpeg";
-  const params = new URLSearchParams({ title: meta.title, contentType });
+  const params = { title: meta.title, contentType };
+  if (meta.hasImage) params.hasImage = "1";
+  return xhrUpload("/pocketcasts/upload", params, fileBlob, contentType, token, onProgress);
+}
 
-  // fetch() no expone progreso de subida de forma nativa; usamos XHR para
-  // poder pintar una barra de progreso real mientras se envía el fichero.
+/**
+ * Sube la portada de un episodio ya subido. Paso independiente y opcional:
+ * si falla, el episodio se queda en Pocket Casts sin portada personalizada,
+ * nada más — nunca hace fallar la subida principal.
+ *
+ * @param {Blob} imageBlob
+ * @param {string} uuid el que devolvió uploadFile()
+ * @param {string} token
+ * @param {(progress:number)=>void} onProgress
+ */
+export async function uploadImage(imageBlob, uuid, token, onProgress) {
+  const contentType = imageBlob.type || "image/jpeg";
+  return xhrUpload("/pocketcasts/upload-image", { uuid, contentType }, imageBlob, contentType, token, onProgress);
+}
+
+// fetch() no expone progreso de subida de forma nativa; usamos XHR para
+// poder pintar una barra de progreso real mientras se envía el fichero.
+function xhrUpload(path, params, blob, contentType, token, onProgress) {
+  const query = new URLSearchParams(params).toString();
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${resolveBase()}/pocketcasts/upload?${params.toString()}`);
+    xhr.open("POST", `${resolveBase()}${path}?${query}`);
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.setRequestHeader("Content-Type", contentType);
     xhr.upload.onprogress = (e) => {
@@ -55,8 +76,8 @@ export async function uploadFile(fileBlob, meta, token, onProgress) {
         reject(new Error(message));
       }
     };
-    xhr.onerror = () => reject(new Error("No se pudo contactar con el Worker para subir el episodio."));
-    xhr.send(fileBlob);
+    xhr.onerror = () => reject(new Error("No se pudo contactar con el Worker."));
+    xhr.send(blob);
   });
 }
 

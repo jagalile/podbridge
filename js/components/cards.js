@@ -57,13 +57,15 @@ export function renderEpisodeRow(episode, onAction, onInfo) {
   return node;
 }
 
+const INFO_ICON_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg>`;
+
 function infoButton(episode, onInfo) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "info-btn";
   btn.title = "Más información";
   btn.setAttribute("aria-label", "Más información sobre este episodio");
-  btn.textContent = "ⓘ";
+  btn.innerHTML = INFO_ICON_SVG;
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     onInfo(episode);

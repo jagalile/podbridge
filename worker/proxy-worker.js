@@ -64,12 +64,16 @@ export default {
           return handleProgram(url, env);
         case "GET /ivoox/audio":
           return handleAudio(url, env);
+        case "GET /ivoox/image":
+          return handleImageProxy(url, env);
         case "GET /ivoox/raw":
           return handleRaw(url, env);
         case "POST /pocketcasts/login":
           return handlePocketCastsLogin(request, env);
         case "POST /pocketcasts/upload":
           return handlePocketCastsUpload(request, env);
+        case "POST /pocketcasts/upload-image":
+          return handlePocketCastsUploadImage(request, env);
         default:
           return errorResponse("Not found", env, 404);
       }
@@ -332,11 +336,13 @@ function parseProgramInfo(html, programUrl) {
       : programUrl;
 
   const ogImageM = html.match(/property="og:image"\s+content="([^"]+)"/i);
+  const ogDescM = html.match(/property="og:description"\s+content="([^"]*)"/i);
 
   return {
     title,
     image: ogImageM ? upgradeImage(ogImageM[1]) : null,
     author: "",
+    description: ogDescM ? decodeHtmlEntities(ogDescM[1]).trim() : "",
     isOriginal: ORIGINALS_RE.test(html),
     url: programUrl,
   };
@@ -457,6 +463,33 @@ function resolveAudioUrl(episodeUrl) {
 }
 
 // ---------------------------------------------------------------------------
+// GET /ivoox/image?url=  → retransmite una portada (programa o episodio)
+//
+// Las imágenes de iVoox suelen dejarse "hotlinkear" sin problema, pero no
+// hay garantía de que manden cabeceras CORS pensadas para un origen externo
+// como el de GitHub Pages — se retransmiten por aquí para no depender de
+// ello (y de paso sirve para subir la portada a Pocket Casts sin que el
+// navegador tenga que descargarla directamente de iVoox).
+// ---------------------------------------------------------------------------
+
+async function handleImageProxy(url, env) {
+  const target = url.searchParams.get("url");
+  if (!target) return errorResponse("Falta el parámetro url", env, 400);
+
+  const res = await fetch(target, { headers: BROWSER_HEADERS });
+  if (!res.ok || !res.body) {
+    return errorResponse(`iVoox respondió ${res.status} al descargar la imagen`, env, 502);
+  }
+
+  const headers = new Headers(corsHeaders(env));
+  headers.set("Content-Type", res.headers.get("Content-Type") || "image/jpeg");
+  const len = res.headers.get("Content-Length");
+  if (len) headers.set("Content-Length", len);
+
+  return new Response(res.body, { status: 200, headers });
+}
+
+// ---------------------------------------------------------------------------
 // GET /ivoox/raw?url=  → HTML crudo, solo para depurar el scraper
 // ---------------------------------------------------------------------------
 
@@ -515,8 +548,9 @@ async function handlePocketCastsUpload(request, env) {
   if (!request.body || !size) return errorResponse("Falta el fichero de audio", env, 400);
 
   const id = crypto.randomUUID();
+  const hasImage = url.searchParams.get("hasImage") === "1";
 
-  const requestBody = encodeFileUploadRequest({ uuid: id, title, size, contentType });
+  const requestBody = encodeFileUploadRequest({ uuid: id, title, size, contentType, hasImage });
 
   const uploadReqRes = await fetch("https://api.pocketcasts.com/files/upload/request", {
     method: "POST",
@@ -549,9 +583,59 @@ async function handlePocketCastsUpload(request, env) {
   return json({ ok: true, uuid: id, title }, env);
 }
 
-// --- Protobuf mínimo, a mano, solo para los dos mensajes que necesitamos ---
-// (Files_FileUploadRequest / Files_FileUploadResponse, campos según el
-// endpoint reverse-engineered de la app oficial de Pocket Casts.)
+/**
+ * Sube la portada de un episodio ya subido a Archivos. Es un segundo paso
+ * independiente, atado al mismo `uuid` que devolvió /pocketcasts/upload —
+ * por eso hay que pasarlo por query string aquí. Si esto falla, no se
+ * reintenta ni bloquea nada: el audio ya está subido, la portada es solo
+ * un extra (Pocket Casts pondrá su icono por defecto).
+ */
+async function handlePocketCastsUploadImage(request, env) {
+  const url = new URL(request.url);
+  const authHeader = request.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const uuid = url.searchParams.get("uuid");
+  const contentType = url.searchParams.get("contentType") || "image/jpeg";
+  const size = Number(request.headers.get("Content-Length") || 0);
+
+  if (!token) return errorResponse("Falta el token de Pocket Casts", env, 401);
+  if (!uuid) return errorResponse("Falta el uuid del fichero", env, 400);
+  if (!request.body || !size) return errorResponse("Falta la imagen", env, 400);
+
+  const requestBody = encodeImageUploadRequest({ uuid, size, contentType });
+
+  const uploadReqRes = await fetch("https://api.pocketcasts.com/files/upload/image", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+    body: requestBody,
+  });
+  if (!uploadReqRes.ok) {
+    return errorResponse(`Pocket Casts rechazó la subida de portada (${uploadReqRes.status})`, env, uploadReqRes.status);
+  }
+
+  const responseBytes = new Uint8Array(await uploadReqRes.arrayBuffer());
+  const presignedUrl = decodeImageUploadResponseUrl(responseBytes);
+  if (!presignedUrl) {
+    return errorResponse("Pocket Casts no devolvió una URL de subida de portada válida", env, 502);
+  }
+
+  const putRes = await fetch(presignedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType, "Content-Length": String(size) },
+    body: request.body,
+    duplex: "half",
+  });
+  if (!putRes.ok) {
+    return errorResponse(`Falló la subida de la portada (${putRes.status})`, env, 502);
+  }
+
+  return json({ ok: true, uuid }, env);
+}
+
+// --- Protobuf mínimo, a mano, solo para los mensajes que necesitamos ---
+// (Files_FileUploadRequest/Response y Files_ImageUploadRequest/Response,
+// campos según el endpoint reverse-engineered de la app oficial de Pocket
+// Casts. Field numbers verificados contra su fuente Swift/protobuf.)
 
 function encodeVarint(num) {
   const bytes = [];
@@ -587,23 +671,36 @@ function concatBytes(...arrays) {
   return out;
 }
 
-function encodeFileUploadRequest({ uuid, title, size, contentType }) {
+function encodeFileUploadRequest({ uuid, title, size, contentType, hasImage }) {
   return concatBytes(
     encodeStringField(1, uuid),
     encodeStringField(2, title),
     encodeVarintFieldMsg(3, size),
     encodeStringField(4, contentType),
+    // Campo 7 = hasCustomImage_p (bool). Hay que avisar aquí de que se va a
+    // subir una portada — la petición de subida de imagen (más abajo) es un
+    // paso aparte, ligado al mismo uuid, pero Pocket Casts necesita saber
+    // de antemano que la va a esperar.
+    hasImage ? encodeVarintFieldMsg(7, 1) : new Uint8Array(),
   );
 }
 
-/** Lee el mensaje de respuesta y devuelve el string del campo 2 (URL). */
-function decodeFileUploadResponseUrl(bytes) {
+function encodeImageUploadRequest({ uuid, size, contentType }) {
+  return concatBytes(
+    encodeStringField(1, uuid),
+    encodeVarintFieldMsg(2, size),
+    encodeStringField(3, contentType),
+  );
+}
+
+/** Lee un mensaje protobuf de respuesta y devuelve el string de `fieldNum`. */
+function decodeProtobufStringField(bytes, fieldNum) {
   let pos = 0;
-  let url = null;
+  let value = null;
   while (pos < bytes.length) {
     const [tag, afterTag] = readVarint(bytes, pos);
     pos = afterTag;
-    const fieldNum = tag >> 3;
+    const num = tag >> 3;
     const wireType = tag & 7;
 
     if (wireType === 0) {
@@ -614,13 +711,18 @@ function decodeFileUploadResponseUrl(bytes) {
       pos = afterLen;
       const slice = bytes.slice(pos, pos + len);
       pos += len;
-      if (fieldNum === 2) url = new TextDecoder().decode(slice);
+      if (num === fieldNum) value = new TextDecoder().decode(slice);
     } else {
-      break; // wire type no soportado (no debería aparecer en este mensaje)
+      break; // wire type no soportado (no debería aparecer en estos mensajes)
     }
   }
-  return url;
+  return value;
 }
+
+// Files_FileUploadResponse: campo 1 = uuid, campo 2 = url.
+const decodeFileUploadResponseUrl = (bytes) => decodeProtobufStringField(bytes, 2);
+// Files_ImageUploadResponse: campo 1 = url (mensaje más simple, sin uuid).
+const decodeImageUploadResponseUrl = (bytes) => decodeProtobufStringField(bytes, 1);
 
 function readVarint(bytes, pos) {
   let result = 0n;

@@ -1,11 +1,17 @@
-// Orquesta el flujo completo por episodio: descarga desde iVoox (a través
-// del Worker, que gestiona cabeceras/hotlink) → sube a Archivos de Pocket
-// Casts. Todo queda reflejado en el store (jobs) para que la UI reaccione.
+// Orquesta el flujo completo por episodio: descarga el audio (y su
+// portada, si tiene) desde iVoox a través del Worker → sube ambos a
+// Archivos de Pocket Casts. Todo queda reflejado en el store (jobs) para
+// que la UI reaccione.
 
 import { state, setJob } from "./state.js";
-import { audioProxyUrl } from "./api/ivoox.js";
-import { uploadFile } from "./api/pocketcasts.js";
+import { audioProxyUrl, imageProxyUrl } from "./api/ivoox.js";
+import { uploadFile, uploadImage } from "./api/pocketcasts.js";
 import { uuid } from "./utils.js";
+
+// Reparto del progreso 0..1 mostrado en la UI según haya o no portada que
+// subir (la portada es opcional y no debe hacer más lento el caso normal).
+const WEIGHTS_WITH_IMAGE = { downloadAudio: 0.35, downloadImage: 0.1, uploadAudio: 0.4, uploadImage: 0.15 };
+const WEIGHTS_NO_IMAGE = { downloadAudio: 0.5, downloadImage: 0, uploadAudio: 0.5, uploadImage: 0 };
 
 export async function runEpisodeJob(episode) {
   const id = episode.id;
@@ -27,17 +33,50 @@ export async function runEpisodeJob(episode) {
     return;
   }
 
+  const w = episode.image ? WEIGHTS_WITH_IMAGE : WEIGHTS_NO_IMAGE;
+  let base = 0;
+
   try {
     setJob(id, { status: "downloading", progress: 0, error: "" });
-    const blob = await downloadAudio(episode, (p) => setJob(id, { progress: p * 0.5 }));
-
-    setJob(id, { status: "uploading", progress: 0.5 });
-    await uploadFile(
-      blob,
-      { title: episode.title, contentType: blob.type || "audio/mpeg" },
-      state.pocketcasts.token,
-      (p) => setJob(id, { progress: 0.5 + p * 0.5 }),
+    const audioBlob = await downloadBinary(
+      audioProxyUrl(state.settings.proxyUrl, episode.downloadUrl),
+      (p) => setJob(id, { progress: base + p * w.downloadAudio }),
     );
+    base += w.downloadAudio;
+
+    // La portada es un extra: si falla su descarga, seguimos sin ella en
+    // vez de tirar toda la subida por la borda.
+    let imageBlob = null;
+    if (episode.image) {
+      try {
+        imageBlob = await downloadBinary(
+          imageProxyUrl(state.settings.proxyUrl, episode.image),
+          (p) => setJob(id, { progress: base + p * w.downloadImage }),
+        );
+      } catch { /* sin portada, no pasa nada */ }
+      base += w.downloadImage;
+    }
+
+    setJob(id, { status: "uploading", progress: base });
+    const result = await uploadFile(
+      audioBlob,
+      { title: episode.title, contentType: audioBlob.type || "audio/mpeg", hasImage: !!imageBlob },
+      state.pocketcasts.token,
+      (p) => setJob(id, { progress: base + p * w.uploadAudio }),
+    );
+    base += w.uploadAudio;
+
+    if (imageBlob) {
+      setJob(id, { progress: base });
+      try {
+        await uploadImage(
+          imageBlob,
+          result.uuid,
+          state.pocketcasts.token,
+          (p) => setJob(id, { progress: base + p * w.uploadImage }),
+        );
+      } catch { /* el episodio ya está subido; la portada es solo un extra */ }
+    }
 
     setJob(id, { status: "done", progress: 1 });
   } catch (err) {
@@ -45,13 +84,12 @@ export async function runEpisodeJob(episode) {
   }
 }
 
-async function downloadAudio(episode, onProgress) {
-  const url = audioProxyUrl(state.settings.proxyUrl, episode.downloadUrl);
+async function downloadBinary(url, onProgress) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`iVoox respondió ${res.status} al descargar el audio.`);
+  if (!res.ok) throw new Error(`iVoox respondió ${res.status} al descargar.`);
 
   const total = Number(res.headers.get("Content-Length")) || 0;
-  const contentType = res.headers.get("Content-Type") || "audio/mpeg";
+  const contentType = res.headers.get("Content-Type") || "application/octet-stream";
 
   if (!res.body || !total) {
     // Sin streaming/longitud conocida: descarga directa, sin progreso fino.

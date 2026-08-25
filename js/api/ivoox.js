@@ -2,11 +2,14 @@
 // scraping de sus páginas HTML y nos devuelve JSON ya normalizado con esta
 // forma:
 //
-// Programa:  { id, type:"program", title, author, url, image, isOriginal }
+// Programa:  { id, type:"program", title, author, description, url, image, isOriginal }
 // Episodio:  { id, type:"episode", title, program, url, image, isOriginal,
-//              isExclusive, duration, date, downloadUrl }
+//              isExclusive, duration, date, description, downloadUrl }
 //
 // downloadUrl es null cuando el episodio es exclusivo (no descargable).
+// `image` apunta directo a la CDN de iVoox — para descargarla de verdad
+// (p. ej. para subirla como portada a Pocket Casts) hay que pasarla por
+// imageProxyUrl(), no hacerle fetch() directo.
 
 import { getJson } from "./proxy.js";
 
@@ -28,4 +31,9 @@ export async function getProgram(programUrl, { signal } = {}) {
 /** URL (a través del Worker) desde la que descargar el audio en crudo. */
 export function audioProxyUrl(proxyBaseUrl, episodeUrl) {
   return `${proxyBaseUrl}/ivoox/audio?url=${encodeURIComponent(episodeUrl)}`;
+}
+
+/** URL (a través del Worker) desde la que descargar una portada en crudo. */
+export function imageProxyUrl(proxyBaseUrl, imageUrl) {
+  return `${proxyBaseUrl}/ivoox/image?url=${encodeURIComponent(imageUrl)}`;
 }

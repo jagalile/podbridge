@@ -31,6 +31,10 @@ export function openEpisodeModal(episode, onAction, buildActionButton) {
       ${badges.length ? `<div class="episode-modal-badges">${badges.join("")}</div>` : ""}
       ${metaBits.length ? `<p class="episode-modal-meta">${metaBits.map((b) => `<span>${b}</span>`).join("")}</p>` : ""}
       <div class="episode-modal-description${description ? "" : " is-empty"}">${escapeHtml(description)}</div>
+      <a class="program-header-link episode-modal-link" href="${episode.url}" target="_blank" rel="noopener noreferrer">
+        Ver en iVoox
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg>
+      </a>
     </div>
     <div class="episode-modal-footer" id="episode-modal-footer"></div>
   `;

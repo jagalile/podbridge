@@ -107,9 +107,14 @@ ir mejor buscar el programa y abrir su lista completa.
 proyecto implementa el flujo de subida de Archivos tal y como lo hacen las
 apps oficiales (reverse-engineered): `POST /user/login` para el token, y
 `POST /files/upload/request` con un mensaje protobuf (`uuid`, `title`,
-`size`, `contentType`) que devuelve una URL S3 pre-firmada donde se sube el
-audio con `PUT`. La subida de Archivos a la nube **requiere Pocket Casts
-Plus**; sin esa suscripción, Pocket Casts rechazará la solicitud.
+`size`, `contentType`, `hasCustomImage_p`) que devuelve una URL S3
+pre-firmada donde se sube el audio con `PUT`. Si el episodio tiene portada,
+hay un segundo paso independiente — `POST /files/upload/image` con
+(`uuid`, `size`, `contentType`), mismo `uuid` que el audio — que da otra
+URL pre-firmada para subir la imagen; si ese segundo paso falla no se
+reintenta ni bloquea nada, el episodio se queda sin portada personalizada y
+ya está. La subida de Archivos a la nube **requiere Pocket Casts Plus**;
+sin esa suscripción, Pocket Casts rechazará la solicitud.
 
 Como es una API privada, puede cambiar sin aviso. Si el login o la subida
 empiezan a fallar, `worker/proxy-worker.js` (sección "Pocket Casts") es el

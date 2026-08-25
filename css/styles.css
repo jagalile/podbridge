@@ -308,17 +308,22 @@ code {
 }
 .tag-original { color: var(--originals); background: var(--originals-soft); border-radius: 999px; padding: 2px 8px; font-weight: 700; font-size: 11px; }
 
-.episode-actions { display: flex; align-items: center; gap: 8px; }
+.episode-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .action-btn {
-  display: inline-flex; align-items: center; gap: 7px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--bg-sunken);
   padding: 9px 14px;
   font-size: 13px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
   color: var(--text);
+  /* Ancho mínimo fijo: el texto cambia ("Descargar y subir" → "Subiendo…
+     100%" → "✓ En Pocket Casts"...) y sin esto el botón de +info de al
+     lado se desplazaba cada vez que cambiaba el estado. */
+  min-width: 176px;
   transition: border-color .15s ease, background .15s ease, transform .15s ease;
 }
 .action-btn:hover:not(:disabled) { border-color: var(--accent); }
@@ -342,7 +347,7 @@ code {
 .program-header {
   display: flex;
   gap: 18px;
-  align-items: center;
+  align-items: flex-start;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-l);
@@ -350,8 +355,15 @@ code {
   margin-bottom: 24px;
 }
 .program-header img { width: 88px; height: 88px; border-radius: var(--radius-m); object-fit: cover; flex: none; }
-.program-header h2 { font-family: var(--font-display); margin: 0 0 4px; font-size: 20px; }
-.program-header p { margin: 0; color: var(--text-muted); font-size: 13.5px; }
+.program-header-body { min-width: 0; }
+.program-header h2 { font-family: var(--font-display); margin: 0 0 6px; font-size: 20px; }
+.program-header-description { margin: 0 0 10px; color: var(--text-muted); font-size: 13.5px; line-height: 1.55; }
+.program-header-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 13px; font-weight: 700; color: var(--accent);
+  text-decoration: none;
+}
+.program-header-link:hover { text-decoration: underline; }
 
 .episode-list { display: flex; flex-direction: column; gap: 10px; }
 .episode-row {
@@ -370,17 +382,18 @@ code {
 .episode-row .episode-title { white-space: normal; font-size: 14px; }
 
 .info-btn {
-  width: 34px; height: 34px; flex: none;
+  width: 38px; height: 38px; flex: none;
   display: grid; place-items: center;
   border-radius: 50%;
   border: 1px solid var(--border);
   background: var(--bg-sunken);
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 15px;
-  transition: color .15s ease, border-color .15s ease;
+  padding: 0;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
 }
-.info-btn:hover { color: var(--text); border-color: var(--accent); }
+.info-btn svg { display: block; }
+.info-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
 /* ===== Skeletons ===== */
 .skeleton-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
@@ -478,6 +491,7 @@ code {
 .episode-modal-description { font-size: 14px; line-height: 1.65; color: var(--text); white-space: pre-line; }
 .episode-modal-description:empty::before,
 .episode-modal-description.is-empty::before { content: "No hay descripción disponible para este episodio."; color: var(--text-faint); font-style: italic; }
+.episode-modal-link { display: inline-flex; margin-top: 14px; }
 .episode-modal-footer { padding: 20px 24px 0; }
 
 /* ===== Toasts ===== */

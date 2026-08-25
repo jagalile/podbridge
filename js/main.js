@@ -7,7 +7,7 @@ import { skeletonGrid, idleState, emptyState, errorState, proxyMissingState } fr
 import { renderProgramCard, renderEpisodeCard, renderEpisodeRow, applyJobState, actionButton } from "./components/cards.js";
 import { openOverlay, closeOverlay } from "./components/overlay.js";
 import { openEpisodeModal } from "./components/episodeModal.js";
-import { debounce } from "./utils.js";
+import { debounce, escapeHtml } from "./utils.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -200,14 +200,17 @@ function renderProgram() {
 
   programHeaderEl.innerHTML = "";
   if (info) {
-    const badge = info.isOriginal
-      ? `<span class="tag-original">iVoox Originals</span>`
-      : "";
+    const badge = info.isOriginal ? `<span class="tag-original">iVoox Originals</span>` : "";
+    const description = (info.description || "").trim();
     programHeaderEl.innerHTML = `
       <img src="${info.image || ""}" alt="" onerror="this.style.visibility='hidden'" />
-      <div>
-        <h2>${info.title} ${badge}</h2>
-        <p>${info.author || ""}</p>
+      <div class="program-header-body">
+        <h2>${escapeHtml(info.title)} ${badge}</h2>
+        ${description ? `<p class="program-header-description">${escapeHtml(description)}</p>` : ""}
+        <a class="program-header-link" href="${info.url}" target="_blank" rel="noopener noreferrer">
+          Ver en iVoox
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg>
+        </a>
       </div>
     `;
   }
