@@ -62,27 +62,44 @@ Abre la web publicada → icono de ajustes (⚙️):
 
 ## Sobre el scraping de iVoox (léelo antes de reportar un "no funciona")
 
-iVoox no ofrece garantías de estabilidad para su HTML público. El Worker
-localiza programas/episodios por el **patrón de URL** (`_sq_f<id>` para
-programas, `_rf_<id>` para episodios), que es la parte más estable del
-sitio, y intenta extraer título/imagen/fecha/duración del entorno de cada
-enlace con expresiones regulares tolerantes. La resolución del **mp3 real**
-de un episodio (`resolveAudioUrl` en `worker/proxy-worker.js`) es el punto
-más frágil, porque iVoox a veces la carga de forma dinámica en vez de
-dejarla en el HTML estático.
+iVoox no ofrece garantías de estabilidad para su HTML público, y de hecho
+mezcla dos generaciones de plantillas distintas:
 
-Si ves muchos episodios como "No disponible":
+- Las páginas de **búsqueda de programas** (`podcast-{término}_sw_1_1_1.html`)
+  son HTML "clásico" con microdatos `itemprop="name"/"url"/"description"`
+  por tarjeta (`parseProgramCards`).
+- Las páginas de **programa/episodios** son una SPA Nuxt donde casi todos
+  los enlaces son **relativos** (`/episodio.html`, no
+  `https://www.ivoox.com/episodio.html`) y el título de cada episodio va en
+  un `<a class="...text-truncate...">` dentro de un `<h3>` (`parseEpisodeCards`).
 
-1. Abre `https://TU-WORKER.workers.dev/ivoox/raw?url=<url-del-episodio>`
+La **exclusividad** se detecta por la clase del botón de reproducción:
+`round-play btn-fans` en episodios del programa de Fans/pago de iVoox,
+`round-play btn-primary` en los libres — más fiable que buscar la palabra
+"exclusivo" en el texto. El **mp3 real** de un episodio libre se resuelve
+sin necesidad de más scraping: iVoox lo sirve siempre en
+`https://www.ivoox.com/listen_mn_<id-del-episodio>_1.mp3` (mismo `<id>` que
+aparece como `_rf_<id>` en la URL del episodio), con un par de redirecciones
+302 hasta su CDN (Triton Digital) — `resolveAudioUrl` solo construye esa URL,
+no hace falta descargar la página del episodio para averiguarla.
+
+Si algo de esto deja de funcionar (títulos raros, "No disponible" en masa,
+programas sin episodios):
+
+1. Abre `https://TU-WORKER.workers.dev/ivoox/raw?url=<la-url-que-falla>`
    en el navegador para ver el HTML real que ve el Worker.
-2. Busca ahí cómo referencia iVoox el audio (una URL `.mp3`, un bloque
-   `<script>` con JSON, un `data-*` en el reproductor…).
-3. Ajusta `resolveAudioUrl` / `parseSearchResults` en
+2. Busca ahí las clases/atributos que usan las funciones de arriba
+   (`itemprop`, `text-truncate`, `round-play`, `_rf_`) y comprueba si iVoox
+   los ha cambiado.
+3. Ajusta `parseProgramCards` / `parseEpisodeCards` / `resolveAudioUrl` en
    `worker/proxy-worker.js` en consecuencia y vuelve a `wrangler deploy`.
 
-Los **episodios exclusivos** (marcados con 🔒) nunca se intentan descargar:
-la detección se basa en la palabra "exclusiv" apareciendo junto al episodio
-en la página. Si iVoox cambia cómo lo etiqueta, ajusta esa misma función.
+**Búsqueda de episodios:** iVoox no indexa episodios sueltos por palabra
+clave (solo programas). Cuando buscas en modo "Episodios", el Worker busca
+primero los programas más afines a tu término y luego filtra los episodios
+de esos programas cuyo título la contiene — es una aproximación razonable,
+no una búsqueda global real. Para encontrar un episodio muy concreto suele
+ir mejor buscar el programa y abrir su lista completa.
 
 ## Sobre la API de Pocket Casts
 

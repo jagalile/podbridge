@@ -15,7 +15,7 @@
  * los programas usan "_sq_f<id>" y los episodios "_rf_<id>"), pero si iVoox
  * cambia su HTML esto puede dejar de encontrar resultados. Usa el endpoint
  * de depuración `/ivoox/raw?url=...` para inspeccionar el HTML real y
- * ajustar las funciones `parseSearchResults` / `parseProgramPage` /
+ * ajustar las funciones `parseProgramCards` / `parseEpisodeCards` /
  * `resolveAudioUrl` de este archivo.
  *
  * Despliegue: `wrangler deploy` desde esta carpeta (ver README).
@@ -108,6 +108,216 @@ function slugify(text) {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers de scraping compartidos
+//
+// iVoox mezcla dos generaciones de plantillas: las páginas de resultados de
+// búsqueda (`_sw_..._1.html`) son HTML "clásico" con microdatos `itemprop`,
+// mientras que las páginas de programa/episodio son una SPA Nuxt con muchos
+// enlaces RELATIVOS (`/episodio.html` en vez de `https://www.ivoox.com/...`).
+// Todo lo de aquí abajo está verificado contra HTML real de iVoox (agosto
+// 2026) usando el propio endpoint /ivoox/raw de este Worker.
+// ---------------------------------------------------------------------------
+
+const IVOOX_ORIGIN = "https://www.ivoox.com";
+
+function resolveUrl(href) {
+  if (!href) return null;
+  if (/^https?:\/\//i.test(href)) return href;
+  return IVOOX_ORIGIN + (href.startsWith("/") ? href : `/${href}`);
+}
+
+/**
+ * Las imágenes vienen servidas por un resizer
+ * (img-static.ivoox.com/index.php?w=77&h=77&url=<imagen-real-XXL>) que las
+ * entrega en miniatura. La imagen real en alta resolución está en el propio
+ * parámetro `url=`, así que la extraemos en vez de usar el thumbnail.
+ */
+function upgradeImage(rawSrc) {
+  if (!rawSrc) return null;
+  const decoded = decodeHtmlEntities(rawSrc);
+  try {
+    const u = new URL(resolveUrl(decoded));
+    if (u.hostname === "img-static.ivoox.com") {
+      const real = u.searchParams.get("url");
+      if (real) return real;
+    }
+    return u.href;
+  } catch {
+    return decoded;
+  }
+}
+
+// Tabla de entidades HTML con nombre más comunes en texto en español (los
+// campos meta description de iVoox suelen traer las tildes así en vez de
+// UTF-8 directo). Las numéricas (&#237; / &#x00ed;) se resuelven aparte.
+const NAMED_ENTITIES = {
+  amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", nbsp: " ",
+  aacute: "á", eacute: "é", iacute: "í", oacute: "ó", uacute: "ú",
+  Aacute: "Á", Eacute: "É", Iacute: "Í", Oacute: "Ó", Uacute: "Ú",
+  ntilde: "ñ", Ntilde: "Ñ", uuml: "ü", Uuml: "Ü",
+  iexcl: "¡", iquest: "¿", ordf: "ª", ordm: "º", middot: "·",
+  laquo: "«", raquo: "»", ndash: "–", mdash: "—", hellip: "…",
+};
+
+function decodeHtmlEntitiesOnce(str) {
+  return str.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, ent) => {
+    if (ent[0] === "#") {
+      const isHex = ent[1] === "x" || ent[1] === "X";
+      const code = isHex ? parseInt(ent.slice(2), 16) : parseInt(ent.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    }
+    return NAMED_ENTITIES[ent] ?? match;
+  });
+}
+
+/** iVoox a veces codifica dos veces (&amp;iacute; en vez de í), de ahí el doble paso. */
+function decodeHtmlEntities(str) {
+  return decodeHtmlEntitiesOnce(decodeHtmlEntitiesOnce(str));
+}
+
+function parseDurationToSeconds(str) {
+  const parts = str.split(":").map(Number);
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return null;
+}
+
+const ORIGINALS_RE = /mini-badge-originals|ivoox\s*originals?/i;
+
+// ---------------------------------------------------------------------------
+// Tarjetas de PROGRAMA (páginas de búsqueda `_sw_..._1.html`)
+//
+// Cada resultado vive en un bloque `class="... modulo-type-programa"` con
+// microdatos `itemprop` (nombre/descripción/url) y una imagen "lozad"
+// (lazy-load) en el atributo `data-src`.
+// ---------------------------------------------------------------------------
+
+function splitCards(html, marker, maxLen = 4000) {
+  const cards = [];
+  let idx = html.indexOf(marker);
+  while (idx !== -1) {
+    const next = html.indexOf(marker, idx + marker.length);
+    const end = Math.min(html.length, next === -1 ? idx + maxLen : Math.min(next, idx + maxLen));
+    cards.push(html.slice(idx, end));
+    idx = next;
+  }
+  return cards;
+}
+
+function parseProgramCards(html) {
+  const results = [];
+  for (const chunk of splitCards(html, "modulo-type-programa")) {
+    const nameM = chunk.match(/itemprop="name"\s+content="([^"]+)"/);
+    const urlM = chunk.match(/itemprop="url"\s+content="([^"]+)"/);
+    if (!nameM || !urlM) continue; // bloque que no era realmente una tarjeta de programa
+
+    const descM = chunk.match(/itemprop="description"\s+content="([^"]*)"/);
+    const imgM = chunk.match(/<img[^>]*data-src="([^"]+)"[^>]*class="main[^"]*"/);
+    const idM = urlM[1].match(/_sq_f(\d+)/);
+
+    results.push({
+      id: `program-${idM ? idM[1] : urlM[1]}`,
+      type: "program",
+      title: decodeHtmlEntities(nameM[1]),
+      url: urlM[1],
+      image: imgM ? upgradeImage(imgM[1]) : null,
+      isOriginal: ORIGINALS_RE.test(chunk),
+      // No hay un "autor" limpio en la tarjeta de búsqueda; usamos el
+      // arranque de la descripción del programa como subtítulo.
+      author: descM ? decodeHtmlEntities(descM[1]).slice(0, 100).trim() : "",
+    });
+  }
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Tarjetas de EPISODIO (páginas de programa, SPA Nuxt)
+//
+// Por episodio hay tres `<a>` con el mismo href (relativo): la miniatura,
+// el título (clase con "text-truncate") y el botón de play, cuya clase es
+// "round-play btn-primary" en episodios libres y "round-play btn-fans" en
+// los exclusivos de pago (programa de "Fans" de iVoox) — es la señal más
+// fiable de exclusividad, más fiable que buscar la palabra "exclusivo".
+// La duración va justo después del botón de play, en texto plano HH:MM:SS.
+// ---------------------------------------------------------------------------
+
+function parseEpisodeCards(html) {
+  const titleRe = /<a\s+href="([^"]+)"\s+class="font-size-14[^"]*text-truncate[^"]*"[^>]*>\s*([^<]+?)\s*<\/a>/g;
+  const playRe = /<a\s+href="([^"]+)"\s+class="round-play\s+(btn-fans|btn-primary)"/g;
+  const imgTagPattern = '<img[^>]+src="([^"]+)"[^>]+alt="([^"]*)"';
+
+  // href -> { isExclusive, duration } a partir del botón de play (puede
+  // estar muy lejos del título si la descripción del episodio es larga, así
+  // que se resuelve por separado y se cruza por href en vez de por cercanía).
+  const playInfo = new Map();
+  let pm;
+  while ((pm = playRe.exec(html))) {
+    const after = html.slice(pm.index, pm.index + 400);
+    const durM = after.match(/class="text-gray font-size-11"[^>]*>\s*([\d:]+)\s*</);
+    playInfo.set(pm[1], {
+      isExclusive: pm[2] === "btn-fans",
+      duration: durM ? parseDurationToSeconds(durM[1]) : null,
+    });
+  }
+
+  const episodes = [];
+  const seen = new Set();
+  let tm;
+  while ((tm = titleRe.exec(html))) {
+    const href = tm[1];
+    if (seen.has(href)) continue;
+    seen.add(href);
+
+    // La miniatura del episodio queda justo antes de su título en el HTML.
+    const before = html.slice(Math.max(0, tm.index - 700), tm.index);
+    const imgMatches = [...before.matchAll(new RegExp(imgTagPattern, "g"))];
+    const lastImg = imgMatches[imgMatches.length - 1];
+
+    const idMatch = href.match(/_rf_(\d+)/);
+    const info = playInfo.get(href) || {};
+    const isExclusive = !!info.isExclusive;
+    const absoluteUrl = resolveUrl(href);
+    const title = decodeHtmlEntities(tm[2].trim()) || (lastImg ? decodeHtmlEntities(lastImg[2]) : href);
+
+    episodes.push({
+      id: `episode-${idMatch ? idMatch[1] : href}`,
+      type: "episode",
+      title,
+      url: absoluteUrl,
+      image: lastImg ? upgradeImage(lastImg[1]) : null,
+      isOriginal: false, // se rellena por el llamante con el dato del programa
+      isExclusive,
+      date: null, // iVoox solo da fechas relativas ("Hoy", "Ayer") aquí, poco útiles para mostrar
+      duration: info.duration ?? null,
+      downloadUrl: isExclusive ? null : absoluteUrl,
+    });
+  }
+  return episodes;
+}
+
+function parseProgramInfo(html, programUrl) {
+  const breadcrumbM = html.match(
+    /aria-current="page"\s+class="nuxt-link-exact-active nuxt-link-active"[^>]*>\s*([^<]+?)\s*<\/a>/,
+  );
+  const h1M = html.match(/<h1[^>]*>([\s\S]{0,200}?)<\/h1>/i);
+  const title = breadcrumbM
+    ? decodeHtmlEntities(breadcrumbM[1].trim())
+    : h1M
+      ? decodeHtmlEntities(h1M[1].replace(/<[^>]+>/g, "").trim())
+      : programUrl;
+
+  const ogImageM = html.match(/property="og:image"\s+content="([^"]+)"/i);
+
+  return {
+    title,
+    image: ogImageM ? upgradeImage(ogImageM[1]) : null,
+    author: "",
+    isOriginal: ORIGINALS_RE.test(html),
+    url: programUrl,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // GET /ivoox/search?q=&type=program|episode
 // ---------------------------------------------------------------------------
 
@@ -119,103 +329,41 @@ async function handleSearch(url, env) {
   const searchUrl = `https://www.ivoox.com/podcast-${slugify(q)}_sw_1_1_1.html`;
   const res = await fetchIvoox(searchUrl);
   const html = await res.text();
+  const programs = parseProgramCards(html);
 
-  const allCards = parseSearchResults(html, searchUrl);
-  const results = allCards.filter((c) => c.type === type);
+  if (type === "program") {
+    return json({ results: programs, sourceUrl: searchUrl }, env);
+  }
+
+  // iVoox no indexa episodios sueltos por palabra clave (solo programas):
+  // buscamos los programas más afines y filtramos sus episodios cuyo
+  // título contiene la búsqueda. Es una aproximación razonable, no una
+  // búsqueda global de episodios — lo dejamos documentado en el README.
+  const candidates = programs.slice(0, 5);
+  const lowerQuery = q.toLowerCase();
+
+  const perProgram = await Promise.all(
+    candidates.map(async (program) => {
+      try {
+        const pRes = await fetchIvoox(program.url);
+        const pHtml = await pRes.text();
+        return parseEpisodeCards(pHtml).map((ep) => ({
+          ...ep,
+          program: program.title,
+          isOriginal: program.isOriginal,
+        }));
+      } catch {
+        return [];
+      }
+    }),
+  );
+
+  const results = perProgram
+    .flat()
+    .filter((ep) => ep.title.toLowerCase().includes(lowerQuery))
+    .slice(0, 30);
 
   return json({ results, sourceUrl: searchUrl }, env);
-}
-
-/**
- * Extrae tarjetas de resultado (programa o episodio) de una página HTML de
- * iVoox. Estrategia: recorrer todos los <a href="https://www.ivoox.com/...">
- * y clasificarlos por el patrón de la URL, que es la parte más estable del
- * sitio. El título/imagen se leen del propio bloque del enlace cuando es
- * posible; si no se encuentran, se dejan vacíos en vez de fallar.
- */
-function parseSearchResults(html, baseUrl) {
-  const cards = [];
-  const seen = new Set();
-
-  // Bloque "anchor + hasta 600 caracteres siguientes" para poder buscar una
-  // <img> y un texto de título cercanos sin depender de una librería DOM.
-  const anchorRe = /<a\b[^>]*href="(https:\/\/(?:www|us)\.ivoox\.com\/[^"?#]+\.html)"[^>]*>([\s\S]{0,600}?)<\/a>/gi;
-  let match;
-  while ((match = anchorRe.exec(html))) {
-    const [, href, innerBlock] = match;
-    if (seen.has(href)) continue;
-
-    const type = classifyIvooxUrl(href);
-    if (!type) continue; // enlace que no es ni programa ni episodio (menú, categoría, etc.)
-    seen.add(href);
-
-    const context = html.slice(Math.max(0, match.index - 400), match.index + match[0].length + 200);
-    cards.push(buildCard(type, href, innerBlock, context));
-  }
-
-  return cards;
-}
-
-function classifyIvooxUrl(href) {
-  if (/_sq_f\d+/.test(href)) return "program";
-  if (/_rf_\d+/.test(href)) return "episode";
-  return null;
-}
-
-function buildCard(type, href, innerBlock, context) {
-  const title = extractTitle(innerBlock, href);
-  const image = extractImage(innerBlock) || extractImage(context);
-  const isOriginal = /ivoox\s*originals?/i.test(context);
-  const isExclusive = type === "episode" && /exclusiv/i.test(context);
-  const id = (href.match(/_(?:sq_f|rf_)(\d+)/) || [, href])[1];
-
-  const base = { id: `${type}-${id}`, type, title, url: href, image, isOriginal };
-  if (type === "program") {
-    return { ...base, author: extractAuthor(context) };
-  }
-  return {
-    ...base,
-    program: extractAuthor(context),
-    isExclusive,
-    date: extractDate(context),
-    duration: extractDuration(context),
-    downloadUrl: isExclusive ? null : href, // se resuelve al mp3 real en /ivoox/audio bajo demanda
-  };
-}
-
-function extractTitle(innerBlock, fallbackHref) {
-  const stripped = innerBlock.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  if (stripped) return decodeHtmlEntities(stripped);
-  const slug = fallbackHref.split("/").pop().replace(/\.html$/, "");
-  return decodeHtmlEntities(slug.replace(/[-_]/g, " "));
-}
-
-function extractImage(block) {
-  const m = block && block.match(/<img[^>]+src="([^"]+)"/i);
-  return m ? m[1] : null;
-}
-
-function extractAuthor(context) {
-  const m = context.match(/de\s+([A-ZÁÉÍÓÚÑ][^<>"]{2,40})/);
-  return m ? decodeHtmlEntities(m[1].trim()) : "";
-}
-
-function extractDate(context) {
-  const m = context.match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/);
-  return m ? m[1] : null;
-}
-
-function extractDuration(context) {
-  const m = context.match(/\b(\d{1,2}:\d{2}(?::\d{2})?)\b/);
-  if (!m) return null;
-  const parts = m[1].split(":").map(Number);
-  return parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
-}
-
-function decodeHtmlEntities(str) {
-  return str
-    .replaceAll("&amp;", "&").replaceAll("&quot;", '"').replaceAll("&#39;", "'")
-    .replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&nbsp;", " ");
 }
 
 // ---------------------------------------------------------------------------
@@ -230,24 +378,13 @@ async function handleProgram(url, env) {
   const html = await res.text();
 
   const info = parseProgramInfo(html, programUrl);
-  const episodes = parseSearchResults(html, programUrl).filter((c) => c.type === "episode");
+  const episodes = parseEpisodeCards(html).map((ep) => ({
+    ...ep,
+    program: info.title,
+    isOriginal: info.isOriginal,
+  }));
 
   return json({ info, episodes }, env);
-}
-
-function parseProgramInfo(html, programUrl) {
-  const titleMatch = html.match(/<h1[^>]*>([\s\S]{0,200}?)<\/h1>/i);
-  const title = titleMatch ? decodeHtmlEntities(titleMatch[1].replace(/<[^>]+>/g, "").trim()) : programUrl;
-  const ogImage = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i);
-  const isOriginal = /ivoox\s*originals?/i.test(html.slice(0, 4000));
-
-  return {
-    title,
-    image: ogImage ? ogImage[1] : null,
-    author: extractAuthor(html.slice(0, 4000)),
-    isOriginal,
-    url: programUrl,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -258,7 +395,7 @@ async function handleAudio(url, env) {
   const episodeUrl = url.searchParams.get("url");
   if (!episodeUrl) return errorResponse("Falta el parámetro url", env, 400);
 
-  const audioUrl = await resolveAudioUrl(episodeUrl);
+  const audioUrl = resolveAudioUrl(episodeUrl);
   if (!audioUrl) {
     return errorResponse(
       "No se ha podido resolver el audio de este episodio (puede ser exclusivo o iVoox ha cambiado su web).",
@@ -282,26 +419,16 @@ async function handleAudio(url, env) {
 }
 
 /**
- * Punto más frágil del scraper: la URL mp3 real no siempre viene en el HTML
- * estático de la página del episodio (iVoox puede cargarla de forma
- * dinámica). Se intenta, en orden:
- *   1. Un enlace directo a un .mp3 en el HTML.
- *   2. Un campo tipo "file"/"audio_url"/"mp3" dentro de un bloque JSON
- *      embebido (JSON-LD o variables de estado inline).
- * Si ninguna de las dos aparece, se devuelve null y el frontend lo trata
- * como "no disponible" (ver README → sección de mantenimiento del scraper).
+ * El reproductor de iVoox resuelve el mp3 real a partir del id numérico del
+ * episodio (el mismo que aparece en la URL como "_rf_<id>") con un patrón
+ * fijo: /listen_mn_<id>_1.mp3, que hace un par de redirecciones 302 hasta el
+ * CDN (Triton Digital) y devuelve el audio. Verificado contra HTML/tráfico
+ * real de iVoox (agosto 2026) — si esto deja de funcionar, es el primer
+ * sitio donde mirar (junto con /ivoox/raw?url=<episodio> para reinspeccionar).
  */
-async function resolveAudioUrl(episodeUrl) {
-  const res = await fetchIvoox(episodeUrl);
-  const html = await res.text();
-
-  const direct = html.match(/https?:\/\/[^"'\s]+\.mp3(?:\?[^"'\s]*)?/i);
-  if (direct) return direct[0];
-
-  const jsonField = html.match(/"(?:file|audio_url|mp3|streamUrl)"\s*:\s*"([^"]+\.mp3[^"]*)"/i);
-  if (jsonField) return jsonField[1].replace(/\\\//g, "/");
-
-  return null;
+function resolveAudioUrl(episodeUrl) {
+  const m = episodeUrl.match(/_rf_(\d+)/);
+  return m ? `https://www.ivoox.com/listen_mn_${m[1]}_1.mp3` : null;
 }
 
 // ---------------------------------------------------------------------------
