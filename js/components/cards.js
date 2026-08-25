@@ -146,12 +146,7 @@ export function applyJobState(btn, episode) {
       break;
     case "uploading":
       btn.className = "action-btn is-working";
-      // La fase de subida real (audio de iVoox a Pocket Casts) pasa
-      // entera por el Worker, sin progreso en bytes real que mostrar —
-      // mejor decirlo así que fingir un porcentaje que no avanza.
-      btn.innerHTML = job.indeterminate
-        ? `<span class="spinner"></span> Subiendo el audio…`
-        : `<span class="spinner"></span> Subiendo… ${Math.round(job.progress * 100)}%`;
+      btn.innerHTML = `<span class="spinner"></span> Subiendo… ${Math.round(job.progress * 100)}%`;
       btn.title = "Pulsa para cancelar";
       break;
     case "done":

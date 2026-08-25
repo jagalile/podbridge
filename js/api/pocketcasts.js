@@ -23,30 +23,66 @@ export async function getUsage(token) {
 }
 
 /**
- * Sube un episodio a Archivos de Pocket Casts, de servidor a servidor: el
- * propio Worker lo descarga de iVoox y lo sube, este fetch solo manda la
- * URL del episodio y el título — nunca el audio en sí.
+ * Pide al Worker una URL prefirmada para subir el audio de un episodio a
+ * Archivos. Esta petición es pequeña (solo metadatos: título, tamaño,
+ * tipo) — el audio en sí nunca la atraviesa. La subida real del audio va
+ * después, directa del navegador a `uploadUrl` (ver putDirect()).
  *
- * No es una elección de diseño arbitraria: Cloudflare Workers tiene un
- * límite de 100 MB en el cuerpo de las peticiones que RECIBE (ver README
- * → "Cómo funciona el Worker por dentro"), así que reenviar el audio ya
- * descargado desde el navegador no podía funcionar con episodios largos
- * (uno de ~5h ronda los 260-300 MB). Al no pasar por el navegador,
- * tampoco hay progreso en bytes real que mostrar durante esta fase — se
- * trata como indeterminada en la UI (ver download.js).
+ * No es una elección de diseño arbitraria: Cloudflare Workers limita a
+ * 100 MB el cuerpo de las peticiones HTTP en las que participa — tanto las
+ * que recibe como las que él mismo hace hacia fuera — así que ni recibir
+ * el audio del navegador ni reenviarlo él mismo a Pocket Casts funciona
+ * con episodios largos (uno de ~5h ronda los 260-300 MB). La única forma
+ * de mover el fichero sin tropezar con eso es que nunca pase por el Worker
+ * en ningún sentido: navegador → iVoox y navegador → Pocket Casts,
+ * directos los dos, igual que hace la app oficial (ver README).
  *
- * @param {string} episodeUrl
- * @param {{title:string, hasImage?:boolean}} meta
+ * @param {{title:string, size:number, contentType:string, hasImage?:boolean}} meta
  * @param {string} token
- * @param {AbortSignal} [signal] para poder cancelar (botón de la UI, o el vigilante de atascos)
- * @returns {Promise<{uuid:string, title:string}>}
+ * @returns {Promise<{uuid:string, uploadUrl:string, contentType:string}>}
  */
-export async function uploadEpisodeFromIvoox(episodeUrl, meta, token, signal) {
+export async function requestEpisodeUpload(meta, token) {
   return postJson(
     "/pocketcasts/upload-episode",
-    { episodeUrl, title: meta.title, hasImage: !!meta.hasImage },
-    { headers: { Authorization: `Bearer ${token}` }, signal },
+    { title: meta.title, size: meta.size, contentType: meta.contentType, hasImage: !!meta.hasImage },
+    { headers: { Authorization: `Bearer ${token}` } },
   );
+}
+
+/**
+ * Sube un blob directo a una URL prefirmada (S3/almacenamiento de Pocket
+ * Casts), sin pasar por el Worker — con progreso real vía XHR.
+ *
+ * @param {string} url la `uploadUrl` que devolvió requestEpisodeUpload()
+ * @param {Blob} blob
+ * @param {string} contentType
+ * @param {(progress:number)=>void} onProgress
+ * @param {AbortSignal} [signal]
+ */
+export function putDirect(url, blob, contentType, onProgress, signal) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", contentType);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`El almacenamiento de Pocket Casts respondió ${xhr.status} al subir el audio.`));
+    };
+    // Sin respuesta HTTP en absoluto (xhr.status queda en 0): normalmente
+    // un bloqueo de CORS en el bucket de Pocket Casts, o un corte de red.
+    xhr.onerror = () => reject(new Error(
+      "No se pudo subir el audio directamente al almacenamiento de Pocket Casts (posible bloqueo de CORS o de red).",
+    ));
+    xhr.onabort = () => reject(signal?.reason ?? new DOMException("Cancelado.", "AbortError"));
+    if (signal) {
+      if (signal.aborted) { xhr.abort(); return; }
+      signal.addEventListener("abort", () => xhr.abort(), { once: true });
+    }
+    xhr.send(blob);
+  });
 }
 
 /**
@@ -55,7 +91,7 @@ export async function uploadEpisodeFromIvoox(episodeUrl, meta, token, signal) {
  * nada más — nunca hace fallar la subida principal.
  *
  * @param {Blob} imageBlob
- * @param {string} uuid el que devolvió uploadFile()
+ * @param {string} uuid el que devolvió requestEpisodeUpload()
  * @param {string} token
  * @param {(progress:number)=>void} onProgress
  * @param {AbortSignal} [signal]
