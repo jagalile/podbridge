@@ -38,25 +38,13 @@ export function fmtBytes(bytes) {
 }
 
 /**
- * A partir de este tamaño, la subida automática a Pocket Casts (que pasa
- * de servidor a servidor por el Worker) puede fallar — ver la sección
- * "Episodios muy grandes" del README. Se usa para decidir cuándo enseñar
- * el botón de descarga manual además del de "Descargar y subir" normal.
+ * A partir de este tamaño, Cloudflare Workers no consigue mantener
+ * fiable la subida saliente hacia Pocket Casts — ver la sección
+ * "Episodios muy grandes" del README. Se usa en download.js para decidir
+ * si un episodio va por el Worker directamente o por el servicio de
+ * relevo externo.
  */
 export const LARGE_EPISODE_BYTES = 100 * 1024 * 1024;
-
-/** Dispara la descarga nativa del navegador para una URL, sin pasar por
- * JS más que para el clic — el propio navegador la guarda en disco en
- * streaming, sin límite de tamaño práctico. */
-export function downloadUrlDirect(url, filename) {
-  const a = document.createElement("a");
-  a.href = url;
-  if (filename) a.download = filename;
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
 
 export function debounce(fn, ms) {
   let t;

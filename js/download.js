@@ -87,7 +87,7 @@ export async function runEpisodeJob(episode) {
   if (isLarge && !state.settings.relayUrl) {
     setJob(id, {
       status: "error",
-      error: "Episodio de más de 100 MB: configura el servicio de relevo en Ajustes, o usa el botón de descarga manual y súbelo tú mismo desde la app de Pocket Casts.",
+      error: "Episodio de más de 100 MB: configura el servicio de relevo en Ajustes para poder subirlo (ver README → Episodios muy grandes).",
     });
     return;
   }

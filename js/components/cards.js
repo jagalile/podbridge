@@ -2,10 +2,9 @@
 // (resultado de búsqueda) y fila de episodio (dentro de un programa).
 // Todas comparten el botón de acción de descarga/subida.
 
-import { clone, fmtDuration, fmtDate, fmtBytes, escapeHtml, downloadUrlDirect, LARGE_EPISODE_BYTES } from "../utils.js";
-import { getJob, isFavorite, toggleFavorite, state } from "../state.js";
+import { clone, fmtDuration, fmtDate, fmtBytes, escapeHtml } from "../utils.js";
+import { getJob, isFavorite, toggleFavorite } from "../state.js";
 import { cancelJob } from "../download.js";
-import { audioProxyUrl } from "../api/ivoox.js";
 
 const FALLBACK_COVER =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23e3e1db'/%3E%3Ctext x='50' y='58' font-size='40' text-anchor='middle'%3E%F0%9F%8E%99%EF%B8%8F%3C/text%3E%3C/svg%3E";
@@ -54,7 +53,6 @@ export function renderEpisodeCard(episode, onAction, onInfo) {
   node.querySelector(".episode-meta").innerHTML = metaHtml(episode);
   const actions = node.querySelector(".episode-actions");
   if (onInfo) actions.appendChild(infoButton(episode, onInfo));
-  if (isLargeEpisode(episode)) actions.appendChild(manualDownloadButton(episode));
   actions.appendChild(actionButton(episode, onAction));
   return node;
 }
@@ -70,33 +68,8 @@ export function renderEpisodeRow(episode, onAction, onInfo) {
   node.querySelector(".episode-meta").innerHTML = metaHtml(episode);
   const actions = node.querySelector(".episode-actions");
   if (onInfo) actions.appendChild(infoButton(episode, onInfo));
-  if (isLargeEpisode(episode)) actions.appendChild(manualDownloadButton(episode));
   actions.appendChild(actionButton(episode, onAction));
   return node;
-}
-
-/** Episodios grandes son candidatos a que la subida automática falle (ver
- * README → "Episodios muy grandes") — se les añade la vía de escape del
- * botón de descarga manual, junto al de "Descargar y subir" normal. */
-function isLargeEpisode(episode) {
-  return !episode.isExclusive && !!episode.downloadUrl && (episode.sizeBytes || 0) > LARGE_EPISODE_BYTES;
-}
-
-const DOWNLOAD_ICON_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>`;
-
-function manualDownloadButton(episode) {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "info-btn";
-  btn.title = "Descargar el mp3 (para subirlo tú mismo desde la app de Pocket Casts — más fiable con episodios grandes)";
-  btn.setAttribute("aria-label", "Descargar el audio de este episodio como mp3");
-  btn.innerHTML = DOWNLOAD_ICON_SVG;
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const url = audioProxyUrl(state.settings.proxyUrl, episode.downloadUrl, episode.title);
-    downloadUrlDirect(url, `${episode.title}.mp3`);
-  });
-  return btn;
 }
 
 const INFO_ICON_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg>`;

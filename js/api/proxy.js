@@ -3,7 +3,7 @@
 
 import { state } from "../state.js";
 
-export class ProxyNotConfiguredError extends Error {
+class ProxyNotConfiguredError extends Error {
   constructor() {
     super("Configura primero la URL de tu Worker en Ajustes.");
     this.name = "ProxyNotConfiguredError";

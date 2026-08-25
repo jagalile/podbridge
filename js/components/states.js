@@ -10,7 +10,7 @@ export function skeletonGrid(container, count = 8) {
   container.appendChild(grid);
 }
 
-export function stateBlock(container, { icon, title, text, tone, actionLabel, onAction }) {
+function stateBlock(container, { icon, title, text, tone, actionLabel, onAction }) {
   container.innerHTML = "";
   const block = document.createElement("div");
   block.className = "state-block";

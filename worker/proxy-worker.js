@@ -64,8 +64,6 @@ export default {
           return handleSearch(url, env);
         case "GET /ivoox/program":
           return handleProgram(url, env);
-        case "GET /ivoox/audio":
-          return handleAudio(url, env);
         case "GET /ivoox/image":
           return handleImageProxy(url, env);
         case "GET /ivoox/raw":
@@ -526,54 +524,6 @@ async function attachEpisodeSizes(episodes) {
       }
     }),
   );
-}
-
-// ---------------------------------------------------------------------------
-// GET /ivoox/audio?url=&filename=  → retransmite el mp3 real de un episodio
-//
-// Es solo una RESPUESTA en streaming — el Worker nunca manda este audio
-// como cuerpo de ninguna petición saliente, así que no le afecta ninguno
-// de los problemas de la subida a Pocket Casts (ver
-// handlePocketCastsUploadEpisode). Por eso también sirve de vía de escape
-// fiable para episodios grandes: un botón de "descargar mp3" en la UI que
-// usa esta URL directamente (con `download` en el enlace) para que el
-// propio navegador lo guarde en disco, sin pasar por JS en ningún momento
-// — y el usuario lo sube él mismo desde la app de Pocket Casts.
-// ---------------------------------------------------------------------------
-
-async function handleAudio(url, env) {
-  const episodeUrl = url.searchParams.get("url");
-  if (!episodeUrl) return errorResponse("Falta el parámetro url", env, 400);
-
-  const audioUrl = resolveAudioUrl(episodeUrl);
-  if (!audioUrl) {
-    return errorResponse(
-      "No se ha podido resolver el audio de este episodio (puede ser exclusivo o iVoox ha cambiado su web).",
-      env, 422,
-    );
-  }
-
-  const audioRes = await fetch(audioUrl, {
-    headers: { ...BROWSER_HEADERS, Referer: episodeUrl },
-  });
-  if (!audioRes.ok || !audioRes.body) {
-    return errorResponse(`iVoox respondió ${audioRes.status} al descargar el audio`, env, 502);
-  }
-
-  const headers = new Headers(corsHeaders(env));
-  headers.set("Content-Type", audioRes.headers.get("Content-Type") || "audio/mpeg");
-  const len = audioRes.headers.get("Content-Length");
-  if (len) headers.set("Content-Length", len);
-
-  // El atributo `download` de un <a> no siempre basta para sugerir nombre
-  // en un recurso de otro origen — Content-Disposition sí lo garantiza.
-  const filename = url.searchParams.get("filename");
-  if (filename) {
-    const safe = filename.replace(/[^\w\s().-]/g, "").trim().slice(0, 150) || "episodio";
-    headers.set("Content-Disposition", `attachment; filename="${safe}.mp3"`);
-  }
-
-  return new Response(audioRes.body, { status: 200, headers });
 }
 
 /**

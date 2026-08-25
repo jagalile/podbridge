@@ -58,12 +58,9 @@ ninguna de las dos.
   nunca pasa por tu navegador ni por tu conexión.
 - Los episodios muy largos (más de 100 MB) van por una vía distinta —
   Cloudflare Workers no consigue mantener fiable esa subida con ficheros
-  tan grandes — usando un servicio de relevo aparte que sí puede, si lo
-  has desplegado (opcional). Ver
+  tan grandes — usando un servicio de relevo aparte, opcional de
+  desplegar. Ver
   [Episodios muy grandes](#episodios-muy-grandes-varios-cientos-de-mb).
-- Con o sin ese servicio configurado, un botón adicional de "descargar
-  mp3" (junto al de información) baja el audio directo al navegador para
-  que lo subas tú mismo desde la app de Pocket Casts.
 - Sube también la portada del episodio como imagen personalizada del
   fichero en Pocket Casts (si falla, el episodio se sube igualmente, solo
   que sin portada propia).
@@ -198,8 +195,7 @@ Abre la web publicada → icono de ajustes:
 ### 4. (Opcional) Desplegar el servicio de relevo para episodios grandes
 
 Sin este paso, todo funciona igual salvo que los episodios de más de
-100 MB no ofrecen el botón automático de subida (solo la descarga manual
-para subirlos tú mismo). Paso a paso completo en
+100 MB no se pueden subir. Paso a paso completo en
 [Episodios muy grandes → Desplegar el servicio de relevo](#episodios-muy-grandes-varios-cientos-de-mb).
 
 ---
@@ -263,7 +259,6 @@ olvidar la sesión recordada en cualquier momento, basta con desactivarlo.
 | `GET /health` | Comprobación de vida, la usa la app para el indicador de estado |
 | `GET /ivoox/search?q=&type=` | Busca programas o episodios en iVoox |
 | `GET /ivoox/program?url=&page=` | Info de un programa + una página de sus episodios |
-| `GET /ivoox/audio?url=&filename=` | Retransmite el mp3 real de un episodio (`filename` sugiere el nombre al descargarlo) |
 | `GET /ivoox/image?url=` | Retransmite una portada (programa o episodio) |
 | `GET /ivoox/raw?url=` | HTML crudo de una URL de iVoox, solo para depurar el scraper |
 | `POST /pocketcasts/login` | Login contra Pocket Casts, devuelve el token de sesión |
@@ -373,7 +368,7 @@ subiendo desde el navegador con progreso real.
 ### Episodios muy grandes (varios cientos de MB)
 
 Con episodios de varias horas (~250-300 MB) la subida automática de
-servidor a servidor **desde el Worker de Cloudflare** no es fiable: se
+servidor a servidor **desde el Worker de Cloudflare** no es fiable. Se
 probaron varios ajustes de streaming sucesivos (`TransformStream`,
 `FixedLengthStream`, bombeo manual respetando contrapresión, agrupar los
 trozos en bloques más grandes antes de escribir) y todos fallaban en el
@@ -406,9 +401,8 @@ Cloudflare en ningún momento:
 Ese servicio nunca ve tu email, tu contraseña ni tu token de Pocket
 Casts — solo la URL pública del mp3 en iVoox y una URL de subida ya
 autorizada y de un solo uso. Es opcional: sin configurarlo, los episodios
-grandes simplemente no ofrecen el botón automático de subida y hay que
-usar la descarga manual (ver abajo). Con la subida normal (episodios de
-hasta 100 MB) esto no cambia nada — sigue yendo por el Worker, tal y
+grandes simplemente no se pueden subir. Con la subida normal (episodios
+de hasta 100 MB) esto no cambia nada — sigue yendo por el Worker, tal y
 como se explica arriba.
 
 #### Desplegar el servicio de relevo
@@ -440,18 +434,6 @@ uso — la primera petición después de eso tarda unos 30-50 segundos en
 arrancar (el navegador esperará ese tiempo en la fase de subida antes de
 que empiece a moverse nada; no hace falta hacer nada especial, solo
 tener paciencia esa primera vez).
-
-#### Vía manual, sin el servicio de relevo
-
-Con o sin el relevo configurado, la lista de episodios enseña un botón
-adicional de **descargar mp3** (icono de flecha hacia abajo, junto al de
-información) en cualquier episodio de más de 100 MB: descarga el audio
-directo al navegador vía `/ivoox/audio` — una respuesta en streaming
-normal, que nunca ha tenido ninguno de los problemas de arriba porque no
-es una petición saliente del Worker — y desde ahí puedes subirlo tú
-mismo a Pocket Casts usando su app oficial (Archivos → Subir un
-fichero), que al subir directamente desde tu dispositivo no pasa por
-ningún límite de Cloudflare.
 
 Como ninguna de las dos es una API pública documentada, **pueden cambiar
 sin aviso**. Si algo deja de funcionar (títulos raros, episodios que no
@@ -500,10 +482,9 @@ aparecen, login o subida rotos), el sitio donde mirar es siempre
   vida) y tiene un límite de seguridad de 15 minutos.
 - **El servicio de relevo para episodios grandes es opcional y es una
   pieza más que mantener.** Sin desplegarlo, esos episodios (más de
-  100 MB) solo se pueden subir a mano (botón de descarga + subida manual
-  desde la app de Pocket Casts). Desplegado en el plan gratuito de
-  Render, además "duerme" tras ~15 min sin uso y la primera petición
-  después tarda 30-50s en arrancar.
+  100 MB) no se pueden subir. Desplegado en el plan gratuito de Render,
+  además "duerme" tras ~15 min sin uso y la primera petición después
+  tarda 30-50s en arrancar.
 - **Persistencia solo local, sin sincronizar.** Favoritos, historial de
   subidas y la sesión recordada viven en `localStorage`/`IndexedDB` de
   este navegador — no se sincronizan entre dispositivos ni navegadores;

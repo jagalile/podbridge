@@ -84,7 +84,7 @@ export function subscribe(fn) {
   return () => listeners.delete(fn);
 }
 
-export function notify() {
+function notify() {
   for (const fn of listeners) fn(state);
 }
 
@@ -177,7 +177,7 @@ export async function persistPocketCastsSession(remember, email, token) {
   }
 }
 
-export function clearPersistedPocketCastsSession() {
+function clearPersistedPocketCastsSession() {
   localStorage.removeItem(PERSISTED_TOKEN_KEY);
   localStorage.removeItem(REMEMBER_KEY);
   localStorage.removeItem(REMEMBERED_EMAIL_KEY);

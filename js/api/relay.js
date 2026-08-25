@@ -9,14 +9,14 @@
 // autorizada por Pocket Casts (de un solo uso, ligada a un fichero
 // concreto) — lo mínimo posible para hacer su trabajo.
 
-export class RelayNotConfiguredError extends Error {
+class RelayNotConfiguredError extends Error {
   constructor() {
-    super("Configura la URL de tu servicio de relevo en Ajustes (o usa el botón de descarga manual).");
+    super("Configura la URL de tu servicio de relevo en Ajustes para poder subir este episodio.");
     this.name = "RelayNotConfiguredError";
   }
 }
 
-export class RelayRequestError extends Error {
+class RelayRequestError extends Error {
   constructor(message, status) {
     super(message);
     this.name = "RelayRequestError";
