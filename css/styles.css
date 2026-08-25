@@ -407,6 +407,11 @@ code {
 .action-btn:disabled { opacity: .5; cursor: not-allowed; }
 .action-btn.is-locked { color: var(--text-faint); cursor: not-allowed; }
 .action-btn.is-working { color: var(--accent); }
+/* Al pasar el ratón, un job en marcha se puede cancelar pulsándolo — el
+   cambio de color avisa de que el clic ya no es "descargar" sino
+   "cancelar" (el texto exacto va en el title, más simple y accesible
+   que sustituir el contenido por CSS). */
+.action-btn.is-working:hover { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
 .action-btn.is-done { color: var(--success); background: var(--success-soft); border-color: transparent; }
 .action-btn.is-error { color: var(--danger); background: var(--danger-soft); border-color: transparent; }
 .spinner {

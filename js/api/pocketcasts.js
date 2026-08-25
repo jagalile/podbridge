@@ -36,13 +36,14 @@ export async function getUsage(token) {
  * @param {{title:string, contentType:string, hasImage?:boolean}} meta
  * @param {string} token
  * @param {(progress:number)=>void} onProgress 0..1, solo durante la subida
+ * @param {AbortSignal} [signal] para poder cancelar (botón de la UI, o el vigilante de atascos)
  * @returns {Promise<{uuid:string, title:string}>}
  */
-export async function uploadFile(fileBlob, meta, token, onProgress) {
+export async function uploadFile(fileBlob, meta, token, onProgress, signal) {
   const contentType = meta.contentType || "audio/mpeg";
   const params = { title: meta.title, contentType };
   if (meta.hasImage) params.hasImage = "1";
-  return xhrUpload("/pocketcasts/upload", params, fileBlob, contentType, token, onProgress);
+  return xhrUpload("/pocketcasts/upload", params, fileBlob, contentType, token, onProgress, signal);
 }
 
 /**
@@ -54,15 +55,18 @@ export async function uploadFile(fileBlob, meta, token, onProgress) {
  * @param {string} uuid el que devolvió uploadFile()
  * @param {string} token
  * @param {(progress:number)=>void} onProgress
+ * @param {AbortSignal} [signal]
  */
-export async function uploadImage(imageBlob, uuid, token, onProgress) {
+export async function uploadImage(imageBlob, uuid, token, onProgress, signal) {
   const contentType = imageBlob.type || "image/jpeg";
-  return xhrUpload("/pocketcasts/upload-image", { uuid, contentType }, imageBlob, contentType, token, onProgress);
+  return xhrUpload("/pocketcasts/upload-image", { uuid, contentType }, imageBlob, contentType, token, onProgress, signal);
 }
 
 // fetch() no expone progreso de subida de forma nativa; usamos XHR para
 // poder pintar una barra de progreso real mientras se envía el fichero.
-function xhrUpload(path, params, blob, contentType, token, onProgress) {
+// XHR no acepta un AbortSignal directamente (a diferencia de fetch), así
+// que si llega uno se engancha a mano para poder cancelar desde fuera.
+function xhrUpload(path, params, blob, contentType, token, onProgress, signal) {
   const query = new URLSearchParams(params).toString();
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -83,6 +87,11 @@ function xhrUpload(path, params, blob, contentType, token, onProgress) {
       }
     };
     xhr.onerror = () => reject(new Error("No se pudo contactar con el Worker."));
+    xhr.onabort = () => reject(signal?.reason ?? new DOMException("Cancelado.", "AbortError"));
+    if (signal) {
+      if (signal.aborted) { xhr.abort(); return; }
+      signal.addEventListener("abort", () => xhr.abort(), { once: true });
+    }
     xhr.send(blob);
   });
 }

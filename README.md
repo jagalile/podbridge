@@ -65,6 +65,12 @@ ninguna de las dos.
   episodio va por su cuenta) — un indicador en la cabecera muestra
   cuántas hay en curso y, al pasar el ratón o pulsarlo, el progreso
   individual de cada una.
+- Si una descarga o subida se queda sin responder (red inestable, algo se
+  cuelga a medio camino…), se detecta sola a los 45 segundos sin
+  actividad y pasa a error lista para reintentar — y en cualquier
+  momento se puede cancelar a mano pulsando el propio botón de progreso.
+  Antes un atasco se quedaba así para siempre, sin más salida que
+  recargar la página entera.
 
 **Cuenta y estado**
 - Conexión con Pocket Casts mediante email y contraseña; las

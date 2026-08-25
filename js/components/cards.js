@@ -4,6 +4,7 @@
 
 import { clone, fmtDuration, fmtDate, fmtBytes, escapeHtml } from "../utils.js";
 import { getJob, isFavorite, toggleFavorite } from "../state.js";
+import { cancelJob } from "../download.js";
 
 const FALLBACK_COVER =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23e3e1db'/%3E%3Ctext x='50' y='58' font-size='40' text-anchor='middle'%3E%F0%9F%8E%99%EF%B8%8F%3C/text%3E%3C/svg%3E";
@@ -105,7 +106,14 @@ export function actionButton(episode, onAction) {
   btn.dataset.episodeId = episode.id;
   applyJobState(btn, episode);
   btn.addEventListener("click", () => {
-    if (btn.classList.contains("is-locked") || btn.classList.contains("is-working")) return;
+    if (btn.classList.contains("is-locked")) return;
+    // Con una descarga/subida en marcha, pulsar el botón la cancela en
+    // vez de no hacer nada — antes, si algo se quedaba atascado, la
+    // única forma de recuperarlo era recargar la página entera.
+    if (btn.classList.contains("is-working")) {
+      cancelJob(episode.id, "Cancelado por el usuario.");
+      return;
+    }
     onAction(episode, btn);
   });
   return btn;
@@ -134,12 +142,12 @@ export function applyJobState(btn, episode) {
     case "downloading":
       btn.className = "action-btn is-working";
       btn.innerHTML = `<span class="spinner"></span> Descargando… ${Math.round(job.progress * 100)}%`;
-      btn.disabled = true;
+      btn.title = "Pulsa para cancelar";
       break;
     case "uploading":
       btn.className = "action-btn is-working";
       btn.innerHTML = `<span class="spinner"></span> Subiendo… ${Math.round(job.progress * 100)}%`;
-      btn.disabled = true;
+      btn.title = "Pulsa para cancelar";
       break;
     case "done":
       btn.className = "action-btn is-done";
