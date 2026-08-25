@@ -1,10 +1,14 @@
-import { state, subscribe, saveProxyUrl, setWorkerStatus, setPocketCasts, logoutPocketCasts, getJob } from "./state.js";
+import {
+  state, subscribe, saveProxyUrl, setWorkerStatus, setPocketCasts, logoutPocketCasts, getJob,
+  isFavorite, toggleFavorite, recordUpload,
+  rememberMeSupported, persistPocketCastsSession, restorePersistedPocketCastsSession, clearPersistedPocketCastsSession,
+} from "./state.js";
 import * as ivoox from "./api/ivoox.js";
 import * as pocketcasts from "./api/pocketcasts.js";
 import { pingWorker } from "./api/proxy.js";
 import { runEpisodeJob } from "./download.js";
 import { toast } from "./components/toast.js";
-import { skeletonGrid, idleState, emptyState, errorState, proxyMissingState } from "./components/states.js";
+import { skeletonGrid, idleState, emptyState, emptyFavoritesState, errorState, proxyMissingState } from "./components/states.js";
 import { renderProgramCard, renderEpisodeCard, renderEpisodeRow, applyJobState, actionButton } from "./components/cards.js";
 import { openOverlay, closeOverlay } from "./components/overlay.js";
 import { openEpisodeModal } from "./components/episodeModal.js";
@@ -66,6 +70,7 @@ $("#pc-login-form").addEventListener("submit", async (e) => {
   }
   const email = $("#pc-email").value.trim();
   const password = $("#pc-password").value;
+  const remember = $("#pc-remember").checked;
   const errorEl = $("#pc-login-error");
   errorEl.hidden = true;
 
@@ -73,9 +78,11 @@ $("#pc-login-form").addEventListener("submit", async (e) => {
   render();
   try {
     const token = await pocketcasts.login(email, password);
-    setPocketCasts({ status: "connected", email, token, error: "" });
+    setPocketCasts({ status: "connected", email, token, error: "", remember });
     $("#pc-password").value = "";
-    toast("Conectado a Pocket Casts", "success");
+    $("#pc-remember").checked = false;
+    await persistPocketCastsSession(remember, email, token);
+    toast(remember ? "Conectado a Pocket Casts (sesión recordada en este dispositivo)" : "Conectado a Pocket Casts", "success");
   } catch (err) {
     setPocketCasts({ status: "error", error: err.message });
     errorEl.textContent = err.message;
@@ -90,11 +97,25 @@ $("#pc-logout-btn").addEventListener("click", () => {
   render();
 });
 
+$("#pc-forget-btn").addEventListener("click", () => {
+  clearPersistedPocketCastsSession();
+  setPocketCasts({ remember: false });
+  toast("Este dispositivo ya no recordará la sesión de Pocket Casts", "info");
+  render();
+});
+
+// Restaura la sesión de Pocket Casts si el usuario activó "recordarme" en
+// una visita anterior (token cifrado en localStorage, ver state.js).
+restorePersistedPocketCastsSession().then(render);
+
 // ---------------------------------------------------------------------------
 // Búsqueda
 // ---------------------------------------------------------------------------
 const searchForm = $("#search-form");
 const searchInput = $("#search-input");
+
+const searchSubmitBtn = searchForm.querySelector("button[type=submit]");
+const searchInputWrap = $(".search-input-wrap");
 
 document.querySelectorAll(".search-type .chip").forEach((chip) => {
   chip.addEventListener("click", () => {
@@ -105,9 +126,33 @@ document.querySelectorAll(".search-type .chip").forEach((chip) => {
     chip.classList.add("is-active");
     chip.setAttribute("aria-selected", "true");
     state.search.type = chip.dataset.type;
-    if (state.search.query) doSearch();
+
+    const isFavoritesTab = state.search.type === "favorites";
+    searchInputWrap.hidden = isFavoritesTab;
+    searchSubmitBtn.hidden = isFavoritesTab;
+
+    if (isFavoritesTab) {
+      renderFavorites();
+    } else if (state.search.query) {
+      doSearch();
+    }
   });
 });
+
+function renderFavorites() {
+  closeProgramView();
+  if (state.favorites.length === 0) {
+    emptyFavoritesState(resultsEl);
+    return;
+  }
+  resultsEl.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.className = "grid";
+  for (const program of state.favorites) {
+    wrap.appendChild(renderProgramCard(program, openProgram));
+  }
+  resultsEl.appendChild(wrap);
+}
 
 searchForm.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -259,10 +304,17 @@ function renderProgram() {
   if (info) {
     const badge = info.isOriginal ? `<span class="tag-original">iVoox Originals</span>` : "";
     const description = (info.description || "").trim();
+    const fav = isFavorite(info.id);
     programHeaderEl.innerHTML = `
       <img src="${info.image || ""}" alt="" onerror="this.style.visibility='hidden'" />
       <div class="program-header-body">
-        <h2>${escapeHtml(info.title)} ${badge}</h2>
+        <div class="program-header-title-row">
+          <h2>${escapeHtml(info.title)} ${badge}</h2>
+          <button type="button" class="favorite-btn${fav ? " is-favorite" : ""}" id="program-favorite-btn"
+            aria-label="${fav ? "Quitar de favoritos" : "Añadir a favoritos"}" title="${fav ? "Quitar de favoritos" : "Añadir a favoritos"}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.5c2-3 7-2.5 7 2 0 4.5-5 7.5-7 9-2-1.5-7-4.5-7-9 0-4.5 5-5 7-2z"/></svg>
+          </button>
+        </div>
         ${description ? `<p class="program-header-description" id="program-description">${escapeHtml(description)}</p>` : ""}
         <div class="program-header-footer">
           ${description ? `<button type="button" class="read-more-btn" id="program-read-more" hidden>Leer más</button>` : ""}
@@ -273,6 +325,11 @@ function renderProgram() {
         </div>
       </div>
     `;
+
+    $("#program-favorite-btn").addEventListener("click", () => {
+      toggleFavorite(info);
+      renderProgram();
+    });
 
     if (description) {
       const descEl = $("#program-description");
@@ -343,7 +400,10 @@ async function handleEpisodeAction(episode, btn) {
   }
   await runEpisodeJob(episode);
   const job = getJob(episode.id);
-  if (job.status === "done") toast(`“${episode.title}” subido a Pocket Casts`, "success");
+  if (job.status === "done") {
+    recordUpload(episode);
+    toast(`“${episode.title}” subido a Pocket Casts`, "success");
+  }
   if (job.status === "error") toast(job.error, "error");
 }
 
@@ -397,11 +457,17 @@ function render() {
   $("#pc-login-btn").disabled = pc.status === "connecting";
   if (!connected) $("#pc-email").value = pc.email;
 
+  const rememberSupported = rememberMeSupported();
+  $("#pc-remember-field").hidden = !rememberSupported;
+  $("#pc-remember-hint").hidden = !(connected && pc.remember);
+
   document.querySelectorAll(".action-btn[data-episode-id]").forEach((btn) => {
     const id = btn.dataset.episodeId;
     const episode = [...state.search.results, ...state.program.episodes].find((e) => e.id === id);
     if (episode) applyJobState(btn, episode);
   });
+
+  if (state.search.type === "favorites" && !state.program.open) renderFavorites();
 }
 
 // Refrescar/cerrar la pestaña corta de raíz cualquier descarga o subida en

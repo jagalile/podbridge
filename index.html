@@ -45,6 +45,7 @@
         <div class="search-type" role="tablist" aria-label="Tipo de búsqueda">
           <button type="button" class="chip is-active" data-type="program" role="tab" aria-selected="true">Programas</button>
           <button type="button" class="chip" data-type="episode" role="tab" aria-selected="false">Episodios</button>
+          <button type="button" class="chip" data-type="favorites" role="tab" aria-selected="false">Favoritos</button>
         </div>
         <div class="search-input-wrap">
           <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
@@ -114,7 +115,7 @@
 
       <section class="settings-section">
         <h3>Cuenta de Pocket Casts</h3>
-        <p class="hint">Tus credenciales viajan directamente a tu propio Worker y de ahí a Pocket Casts — nunca se guardan en un servidor de terceros. Se conservan solo en esta pestaña (<code>sessionStorage</code>) mientras la tengas abierta.</p>
+        <p class="hint">Tus credenciales viajan directamente a tu propio Worker y de ahí a Pocket Casts — nunca se guardan en un servidor de terceros. La contraseña nunca se guarda en ningún sitio; la sesión se conserva en esta pestaña mientras la tengas abierta.</p>
 
         <form id="pc-login-form" class="pc-login-form">
           <div id="pc-login-fields">
@@ -126,6 +127,10 @@
               <span>Contraseña</span>
               <input id="pc-password" type="password" autocomplete="current-password" required />
             </label>
+            <label class="checkbox-field" id="pc-remember-field">
+              <input id="pc-remember" type="checkbox" />
+              <span>Recordarme en este dispositivo (token cifrado)</span>
+            </label>
             <button type="submit" class="btn btn-primary" id="pc-login-btn">Conectar</button>
           </div>
           <p id="pc-login-error" class="field-error" hidden></p>
@@ -135,6 +140,12 @@
           <span>Conectado como <strong id="pc-connected-email"></strong></span>
           <button type="button" class="btn btn-ghost" id="pc-logout-btn">Desconectar</button>
         </div>
+        <p class="hint hint-small" id="pc-remember-hint" hidden>
+          Este dispositivo recordará tu sesión: el token se guarda cifrado con
+          una clave que nunca sale de este navegador (no la contraseña, que
+          nunca se guarda). No lo actives en un ordenador compartido.
+          <button type="button" class="link-btn" id="pc-forget-btn">Olvidar este dispositivo</button>
+        </p>
       </section>
     </div>
   </aside>
@@ -152,16 +163,21 @@
 
   <!-- ===== Plantillas ===== -->
   <template id="tpl-program-card">
-    <button class="program-card" type="button">
-      <div class="program-cover">
-        <img loading="lazy" alt="" />
-      </div>
-      <div class="program-info">
-        <h3 class="program-title"></h3>
-        <p class="program-badges" hidden><span class="tag-original">iVoox Originals</span></p>
-        <p class="program-author"></p>
-      </div>
-    </button>
+    <div class="program-card">
+      <button class="program-card-open" type="button">
+        <div class="program-cover">
+          <img loading="lazy" alt="" />
+        </div>
+        <div class="program-info">
+          <h3 class="program-title"></h3>
+          <p class="program-badges" hidden><span class="tag-original">iVoox Originals</span></p>
+          <p class="program-author"></p>
+        </div>
+      </button>
+      <button class="favorite-btn" type="button" aria-label="Añadir a favoritos">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.5c2-3 7-2.5 7 2 0 4.5-5 7.5-7 9-2-1.5-7-4.5-7-9 0-4.5 5-5 7-2z"/></svg>
+      </button>
+    </div>
   </template>
 
   <template id="tpl-episode-card">

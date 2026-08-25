@@ -58,6 +58,14 @@ export function errorState(container, message, onRetry) {
   });
 }
 
+export function emptyFavoritesState(container) {
+  stateBlock(container, {
+    icon: "☆",
+    title: "Aún no tienes programas favoritos",
+    text: "Pulsa la estrella de cualquier programa para guardarlo aquí y encontrarlo rápido la próxima vez.",
+  });
+}
+
 export function proxyMissingState(container, onOpenSettings) {
   stateBlock(container, {
     icon: "🔌",

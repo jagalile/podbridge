@@ -3,7 +3,7 @@
 // Todas comparten el botón de acción de descarga/subida.
 
 import { clone, fmtDuration, fmtDate, escapeHtml } from "../utils.js";
-import { getJob } from "../state.js";
+import { getJob, isFavorite, toggleFavorite } from "../state.js";
 
 const FALLBACK_COVER =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23e3e1db'/%3E%3Ctext x='50' y='58' font-size='40' text-anchor='middle'%3E%F0%9F%8E%99%EF%B8%8F%3C/text%3E%3C/svg%3E";
@@ -19,8 +19,24 @@ export function renderProgramCard(program, onOpen) {
 
   node.querySelector(".program-title").textContent = program.title;
   node.querySelector(".program-author").textContent = program.author || "";
-  node.addEventListener("click", () => onOpen(program));
+  node.querySelector(".program-card-open").addEventListener("click", () => onOpen(program));
+
+  const favBtn = node.querySelector(".favorite-btn");
+  syncFavoriteButton(favBtn, program.id);
+  favBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleFavorite(program);
+    syncFavoriteButton(favBtn, program.id);
+  });
+
   return node;
+}
+
+function syncFavoriteButton(btn, programId) {
+  const fav = isFavorite(programId);
+  btn.classList.toggle("is-favorite", fav);
+  btn.setAttribute("aria-label", fav ? "Quitar de favoritos" : "Añadir a favoritos");
+  btn.title = fav ? "Quitar de favoritos" : "Añadir a favoritos";
 }
 
 export function renderEpisodeCard(episode, onAction, onInfo) {

@@ -262,18 +262,42 @@ code {
 
 /* Program card */
 .program-card {
-  text-align: left;
+  position: relative;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-m);
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.program-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-m); border-color: var(--accent); }
+.program-card-open {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
   padding: 12px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  color: inherit;
+  font: inherit;
 }
-.program-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-m); border-color: var(--accent); }
+.favorite-btn {
+  position: absolute;
+  top: 10px; right: 10px;
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 85%, transparent);
+  backdrop-filter: blur(3px);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, transform .1s ease;
+}
+.favorite-btn:hover { color: var(--exclusive); border-color: var(--exclusive); transform: scale(1.08); }
+.favorite-btn.is-favorite { color: var(--exclusive); }
+.favorite-btn.is-favorite svg { fill: currentColor; }
 .program-cover {
   position: relative;
   aspect-ratio: 1 / 1;
@@ -361,6 +385,8 @@ code {
 }
 .program-header img { width: 88px; height: 88px; border-radius: var(--radius-m); object-fit: cover; flex: none; }
 .program-header-body { min-width: 0; display: flex; flex-direction: column; }
+.program-header-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.program-header-title-row .favorite-btn { position: static; flex: none; }
 .program-header h2 { font-family: var(--font-display); margin: 0 0 6px; font-size: 20px; }
 .program-header-description {
   margin: 0 0 6px; color: var(--text-muted); font-size: 13.5px; line-height: 1.55;
@@ -478,6 +504,21 @@ code {
 .field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .field-row { display: flex; align-items: center; gap: 12px; }
 .field-status { font-size: 12.5px; color: var(--success); }
+
+.checkbox-field {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-bottom: 14px; font-size: 12.5px; font-weight: 400; color: var(--text-muted);
+  cursor: pointer;
+}
+.checkbox-field input { margin-top: 2px; accent-color: var(--accent); }
+
+.hint-small { font-size: 12px; margin: 12px 0 0; }
+.link-btn {
+  display: block; margin-top: 4px;
+  background: none; border: none; padding: 0;
+  font-size: 12px; font-weight: 700; color: var(--accent); cursor: pointer;
+}
+.link-btn:hover { text-decoration: underline; }
 .worker-health { font-size: 12.5px; color: var(--text-faint); margin: 10px 0 0; }
 .worker-health.is-ok { color: var(--success); }
 .worker-health.is-error { color: var(--danger); }

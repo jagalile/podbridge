@@ -21,6 +21,7 @@ ninguna de las dos.
 - [Cómo funciona (arquitectura)](#cómo-funciona-arquitectura)
 - [Instalación y despliegue](#instalación-y-despliegue)
 - [Uso](#uso)
+- [Persistencia y seguridad](#persistencia-y-seguridad)
 - [Cómo funciona el Worker por dentro](#cómo-funciona-el-worker-por-dentro)
 - [Limitaciones y cosas a tener en cuenta](#limitaciones-y-cosas-a-tener-en-cuenta)
 - [Estructura del repositorio](#estructura-del-repositorio)
@@ -64,11 +65,22 @@ ninguna de las dos.
 **Cuenta y estado**
 - Conexión con Pocket Casts mediante email y contraseña; las
   credenciales viajan directas a tu propio Worker y de ahí a Pocket
-  Casts, nunca a un servidor de terceros, y solo se guardan en memoria de
-  la pestaña mientras la tengas abierta.
+  Casts, nunca a un servidor de terceros. La contraseña nunca se guarda
+  en ningún sitio.
+- "Recordarme en este dispositivo" (opcional): mantiene la sesión de
+  Pocket Casts entre visitas sin volver a pedir la contraseña, con el
+  token cifrado en el navegador — ver [Persistencia y seguridad](#persistencia-y-seguridad).
 - Indicador de estado combinado en la cabecera: si el Worker no está
   configurado, si no responde, o el estado real de la sesión de Pocket
   Casts — de un vistazo sabes qué falla si algo no funciona.
+
+**Favoritos e historial**
+- Marca programas como favoritos con un toque (desde la tarjeta de
+  búsqueda o desde la propia ficha del programa) y encuéntralos luego en
+  la pestaña "Favoritos" del buscador.
+- Los episodios ya subidos se recuerdan entre sesiones: si vuelves más
+  tarde, siguen marcados como subidos en vez de ofrecerte subirlos otra
+  vez.
 
 **Interfaz**
 - Diseño responsive (escritorio y móvil), con tema claro/oscuro
@@ -177,6 +189,39 @@ es contenido de pago de iVoox y esta herramienta no lo toca.
 
 ---
 
+## Persistencia y seguridad
+
+Todo lo que guarda PodBridge vive **solo en tu navegador** — no hay base
+de datos ni backend propio. Qué se guarda, dónde y por qué:
+
+| Dato | Dónde | Cifrado | Notas |
+|---|---|---|---|
+| URL del Worker | `localStorage` | — | No es sensible |
+| Favoritos | `localStorage` | — | No es sensible |
+| Episodios ya subidos | `localStorage` | — | No es sensible |
+| Token de Pocket Casts (sesión activa) | `sessionStorage` | — | Se borra al cerrar la pestaña |
+| Token de Pocket Casts ("recordarme") | `localStorage` | Sí (AES-GCM) | Solo si activas la casilla |
+| Contraseña de Pocket Casts | *(no se guarda)* | — | Ni siquiera cifrada; viaja una vez y se descarta |
+
+**"Recordarme en este dispositivo"** es opcional y desactivado por
+defecto. Al activarlo, el token de sesión (no la contraseña) se cifra con
+`AES-GCM` usando una clave que se genera con Web Crypto y se guarda en
+`IndexedDB` marcada como **no exportable**: ni la propia app puede sacar
+los bytes de la clave, solo pedirle al navegador que cifre o descifre con
+ella. Eso protege el token si alguien copia los ficheros de
+`localStorage`/`IndexedDB` fuera de este navegador — sin la clave, que
+nunca sale de tu perfil de navegador, el texto cifrado no sirve de nada.
+
+Lo que esto **no** protege es un script malicioso corriendo en la propia
+página (XSS): con acceso de ejecución en el origen, podría pedir al
+navegador que descifre igual que hace la app. Es defensa en profundidad
+frente a acceso pasivo a los datos guardados, no una garantía absoluta —
+por eso sigue siendo opcional, y por eso no se te pide activarlo. En un
+ordenador compartido, mejor no activarlo: usa "Olvidar este dispositivo"
+para borrar la sesión recordada en cualquier momento.
+
+---
+
 ## Cómo funciona el Worker por dentro
 
 `worker/proxy-worker.js` expone estos endpoints:
@@ -256,9 +301,11 @@ aparecen, login o subida rotos), el sitio donde mirar es siempre
   tráfico.
 - **La subida de Archivos a Pocket Casts requiere una suscripción Pocket
   Casts Plus.** Sin ella, Pocket Casts rechaza la solicitud.
-- **Sin persistencia.** No hay favoritos, ni historial de lo ya subido:
-  cada sesión empieza de cero (queda pendiente en el TODO local del
-  proyecto).
+- **Persistencia solo local, sin sincronizar.** Favoritos, historial de
+  subidas y la sesión recordada viven en `localStorage`/`IndexedDB` de
+  este navegador — no se sincronizan entre dispositivos ni navegadores;
+  en cada uno hay que marcar los favoritos y activar "recordarme" por
+  separado. Borrar los datos del sitio en el navegador los elimina.
 
 ---
 
@@ -269,7 +316,8 @@ index.html                        Esqueleto de la SPA (una sola página)
 css/styles.css                    Diseño (claro/oscuro automático, responsive)
 
 js/main.js                        Cableado de la UI y orquestación de vistas
-js/state.js                       Store mínimo (búsqueda, programa, sesión, jobs)
+js/state.js                       Store (búsqueda, programa, sesión, favoritos, historial, jobs)
+js/crypto-store.js                Cifrado AES-GCM del token recordado (clave no exportable en IndexedDB)
 js/download.js                    Flujo descargar → subir por episodio
 js/utils.js                       Formateo, helpers varios
 
