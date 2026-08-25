@@ -139,6 +139,12 @@ async function loadUsage() {
   if (state.pocketcasts.status !== "connected") return;
   try {
     const usage = await pocketcasts.getUsage(state.pocketcasts.token);
+    if ((!usage.usedBytes || !usage.totalBytes) && usage.debug) {
+      // No debería pasar, pero por si acaso: si algún día vuelve a venir
+      // vacío, esto deja en la consola justo lo que hace falta para verlo
+      // sin tener que pedir credenciales de nadie.
+      console.warn("PodBridge: /pocketcasts/usage no trajo datos usables", usage.debug);
+    }
     setUsage(usage);
   } catch {
     // no es crítico; si falla, simplemente no se muestra la barra de uso

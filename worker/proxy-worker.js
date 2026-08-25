@@ -644,18 +644,49 @@ async function handlePocketCastsUsage(request, env) {
 
   const res = await fetch("https://api.pocketcasts.com/files/usage/", {
     method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/x-protobuf, application/json" },
   });
   if (!res.ok) {
     return errorResponse(`Pocket Casts respondió ${res.status} al consultar el espacio usado`, env, res.status);
   }
 
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  const fields = decodeProtobufVarintFields(bytes, [1, 2, 3]);
+  const contentType = res.headers.get("Content-Type") || "";
+  const buf = await res.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+
+  // Por si este endpoint concreto resultara devolver JSON en vez de
+  // protobuf (a diferencia del resto de la API de Pocket Casts) — mejor
+  // cubrir las dos posibilidades que asumir a ciegas.
+  let totalBytes = null, usedBytes = null, totalFiles = null;
+  if (contentType.includes("json")) {
+    try {
+      const data = JSON.parse(new TextDecoder().decode(bytes));
+      totalBytes = data.totalSize ?? data.totalBytes ?? null;
+      usedBytes = data.usedSize ?? data.usedBytes ?? null;
+      totalFiles = data.totalFiles ?? null;
+    } catch { /* cae al intento por protobuf de abajo si esto falla */ }
+  }
+  if (totalBytes === null && usedBytes === null) {
+    const fields = decodeProtobufVarintFields(bytes, [1, 2, 3]);
+    totalBytes = fields[1] ?? null;
+    usedBytes = fields[2] ?? null;
+    totalFiles = fields[3] ?? null;
+  }
+
   return json(
-    { totalBytes: fields[1] ?? null, usedBytes: fields[2] ?? null, totalFiles: fields[3] ?? null },
+    {
+      totalBytes, usedBytes, totalFiles,
+      // Datos de diagnóstico, no sensibles (ni token ni contenido de
+      // usuario) — si algún día esto vuelve a fallar, decir qué llegó
+      // realmente ayuda a arreglarlo sin adivinar a ciegas otra vez.
+      debug: { byteLength: bytes.length, contentType, first32Hex: bytesToHex(bytes.slice(0, 32)) },
+    },
     env,
   );
+}
+
+function bytesToHex(bytes) {
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join(" ");
 }
 
 // ---------------------------------------------------------------------------
