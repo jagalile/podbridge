@@ -15,7 +15,7 @@ export function renderProgramCard(program, onOpen) {
   img.alt = program.title;
   img.onerror = () => { img.src = FALLBACK_COVER; };
 
-  if (program.isOriginal) node.querySelector(".badge-original").hidden = false;
+  if (program.isOriginal) node.querySelector(".program-badges").hidden = false;
 
   node.querySelector(".program-title").textContent = program.title;
   node.querySelector(".program-author").textContent = program.author || "";
@@ -29,7 +29,6 @@ export function renderEpisodeCard(episode, onAction, onInfo) {
   img.src = episode.image || FALLBACK_COVER;
   img.alt = episode.title;
   img.onerror = () => { img.src = FALLBACK_COVER; };
-  if (episode.isOriginal) node.querySelector(".badge-original").hidden = false;
 
   node.querySelector(".episode-program").textContent = episode.program || "";
   node.querySelector(".episode-title").textContent = episode.title;
@@ -47,7 +46,6 @@ export function renderEpisodeRow(episode, onAction, onInfo) {
   img.src = episode.image || FALLBACK_COVER;
   img.alt = episode.title;
   img.onerror = () => { img.src = FALLBACK_COVER; };
-  if (episode.isOriginal) node.querySelector(".badge-original").hidden = false;
 
   node.querySelector(".episode-title").textContent = episode.title;
   node.querySelector(".episode-meta").innerHTML = metaHtml(episode);

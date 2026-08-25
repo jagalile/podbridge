@@ -29,6 +29,7 @@ export const state = {
     page: 1,
     hasMore: false,
     loadingMore: false,
+    filterQuery: "",
   },
   // episodeId -> { status: idle|downloading|uploading|done|error, progress, error }
   jobs: new Map(),

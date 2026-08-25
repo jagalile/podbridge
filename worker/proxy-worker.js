@@ -266,9 +266,10 @@ function parseProgramCards(html, originalsIds) {
       url: urlM[1],
       image: imgM ? upgradeImage(imgM[1]) : null,
       isOriginal: id ? originalsIds.has(id) : false,
-      // No hay un "autor" limpio en la tarjeta de búsqueda; usamos el
-      // arranque de la descripción del programa como subtítulo.
-      author: descM ? decodeHtmlEntities(descM[1]).slice(0, 100).trim() : "",
+      // No hay un "autor" limpio en la tarjeta de búsqueda; usamos la
+      // descripción del programa como subtítulo (recortada en CSS con
+      // line-clamp en la tarjeta, entera en la vista de programa).
+      author: descM ? decodeHtmlEntities(descM[1]).trim() : "",
     });
   }
   return results;

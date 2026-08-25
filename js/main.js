@@ -16,6 +16,7 @@ const heroEl = $(".hero");
 const programViewEl = $("#program-view");
 const programHeaderEl = $("#program-header");
 const programEpisodesEl = $("#program-episodes");
+const episodeFilterEl = $("#program-episode-filter");
 
 // ---------------------------------------------------------------------------
 // Settings panel
@@ -174,13 +175,20 @@ async function openProgram(program) {
 
   state.program = {
     open: true, status: "loading", error: "", info: program, episodes: [],
-    page: 1, hasMore: false, loadingMore: false,
+    page: 1, hasMore: false, loadingMore: false, filterQuery: "",
   };
+  episodeFilterEl.value = "";
   renderProgram();
 
   try {
     const { info, episodes, hasMore } = await ivoox.getProgram(program.url, { page: 1 });
-    state.program.info = { ...program, ...info };
+    // iVoox da la descripción del programa en dos sitios con longitudes
+    // distintas (la meta-etiqueta de la ficha, y la de la tarjeta de
+    // búsqueda) — nos quedamos con la que tenga más texto.
+    const description = [info.description, program.author]
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length)[0] || "";
+    state.program.info = { ...program, ...info, description };
     state.program.episodes = episodes;
     state.program.hasMore = hasMore;
     state.program.status = episodes.length ? "success" : "empty";
@@ -228,6 +236,11 @@ function closeProgramView() {
 }
 $("#back-to-results").addEventListener("click", closeProgramView);
 
+episodeFilterEl.addEventListener("input", () => {
+  state.program.filterQuery = episodeFilterEl.value;
+  renderProgram();
+});
+
 function renderProgram() {
   const { status, info, episodes, error } = state.program;
 
@@ -239,26 +252,52 @@ function renderProgram() {
       <img src="${info.image || ""}" alt="" onerror="this.style.visibility='hidden'" />
       <div class="program-header-body">
         <h2>${escapeHtml(info.title)} ${badge}</h2>
-        ${description ? `<p class="program-header-description">${escapeHtml(description)}</p>` : ""}
+        ${description ? `
+          <p class="program-header-description" id="program-description">${escapeHtml(description)}</p>
+          <button type="button" class="read-more-btn" id="program-read-more" hidden>Leer más</button>
+        ` : ""}
         <a class="program-header-link" href="${info.url}" target="_blank" rel="noopener noreferrer">
           Ver en iVoox
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg>
         </a>
       </div>
     `;
+
+    if (description) {
+      const descEl = $("#program-description");
+      const btn = $("#program-read-more");
+      btn.addEventListener("click", () => {
+        const expanded = descEl.classList.toggle("is-expanded");
+        btn.textContent = expanded ? "Leer menos" : "Leer más";
+      });
+      // El botón solo tiene sentido si el texto realmente se corta con el
+      // clamp de 3 líneas; se comprueba tras pintar para no mostrarlo de más.
+      requestAnimationFrame(() => {
+        if (descEl.scrollHeight > descEl.clientHeight + 1) btn.hidden = false;
+      });
+    }
   }
 
+  episodeFilterEl.hidden = status !== "success";
   if (status === "loading") return skeletonGrid(programEpisodesEl, 5);
   if (status === "error") return errorState(programEpisodesEl, error, () => openProgram(state.program.info));
   if (status === "empty") return emptyState(programEpisodesEl, info?.title || "");
 
+  const query = state.program.filterQuery.trim().toLowerCase();
+  const visible = query ? episodes.filter((ep) => ep.title.toLowerCase().includes(query)) : episodes;
+
   programEpisodesEl.innerHTML = "";
-  for (const ep of episodes) {
+  if (query && visible.length === 0) {
+    return emptyState(programEpisodesEl, state.program.filterQuery);
+  }
+  for (const ep of visible) {
     programEpisodesEl.appendChild(renderEpisodeRow(ep, handleEpisodeAction, showEpisodeInfo));
   }
 
   loadMoreObserver.disconnect();
-  if (state.program.hasMore) {
+  // Con un filtro activo no tiene sentido seguir pidiendo más páginas: el
+  // usuario está buscando dentro de lo ya cargado, no navegando la lista.
+  if (!query && state.program.hasMore) {
     const sentinel = document.createElement("div");
     sentinel.className = "load-more-sentinel";
     programEpisodesEl.appendChild(sentinel);

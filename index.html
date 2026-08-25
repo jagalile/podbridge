@@ -70,6 +70,12 @@
         Volver a resultados
       </button>
       <div id="program-header" class="program-header"></div>
+
+      <div class="program-episode-search">
+        <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="program-episode-filter" type="search" placeholder="Buscar en los episodios cargados de este programa…" autocomplete="off" />
+      </div>
+
       <div id="program-episodes" class="episode-list"></div>
     </section>
 
@@ -147,10 +153,10 @@
     <button class="program-card" type="button">
       <div class="program-cover">
         <img loading="lazy" alt="" />
-        <span class="badge badge-original" hidden>iVoox Originals</span>
       </div>
       <div class="program-info">
         <h3 class="program-title"></h3>
+        <p class="program-badges" hidden><span class="tag-original">iVoox Originals</span></p>
         <p class="program-author"></p>
       </div>
     </button>
@@ -160,7 +166,6 @@
     <div class="episode-card">
       <div class="program-cover episode-cover">
         <img loading="lazy" alt="" />
-        <span class="badge badge-original" hidden>Originals</span>
       </div>
       <div class="episode-body">
         <p class="episode-program"></p>
@@ -175,7 +180,6 @@
     <div class="episode-row">
       <div class="program-cover episode-row-cover">
         <img loading="lazy" alt="" />
-        <span class="badge badge-original" hidden>Originals</span>
       </div>
       <div class="episode-row-main">
         <h4 class="episode-title"></h4>
