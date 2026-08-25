@@ -50,3 +50,27 @@ export async function relayUpload({ audioUrl, uploadUrl, contentType, size }, re
   }
   return res.json();
 }
+
+/**
+ * Comprueba si el servicio de relevo configurado responde (GET /health).
+ * No lanza si falla. El plan gratuito de Render "duerme" el servicio tras
+ * ~15 min sin uso y tarda 30-50s en arrancar de nuevo — de ahí el timeout
+ * largo (60s) y que se devuelva cuánto ha tardado: un tiempo alto es la
+ * única pista disponible de que estaba dormido y este ping lo ha
+ * despertado (no hay ninguna API para preguntárselo directamente).
+ *
+ * @param {string} url
+ * @returns {Promise<{ok:boolean, ms:number}>}
+ */
+export async function pingRelay(url) {
+  const started = Date.now();
+  try {
+    const res = await fetch(`${url.replace(/\/+$/, "")}/health`, { signal: AbortSignal.timeout(60_000) });
+    const ms = Date.now() - started;
+    if (!res.ok) return { ok: false, ms };
+    const data = await res.json();
+    return { ok: !!data.ok, ms };
+  } catch {
+    return { ok: false, ms: Date.now() - started };
+  }
+}

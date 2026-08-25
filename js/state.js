@@ -46,6 +46,13 @@ export const state = {
   worker: {
     status: "unknown", // unknown | checking | ok | error (solo si hay proxyUrl configurada)
   },
+  relay: {
+    status: "unknown", // unknown | checking | ok | error (solo si hay relayUrl configurada)
+    // true si el último ping tardó lo suficiente como para pensar que el
+    // servicio estaba dormido (plan gratuito de Render) y este ping lo
+    // acaba de despertar — ver checkRelay() en main.js.
+    wasSleeping: false,
+  },
   pocketcasts: {
     email: sessionStorage.getItem("pb.pc.email") || "",
     token: sessionStorage.getItem("pb.pc.token") || "",
@@ -113,6 +120,7 @@ export function saveProxyUrl(url) {
 export function saveRelayUrl(url) {
   state.settings.relayUrl = url.trim().replace(/\/+$/, "");
   localStorage.setItem("pb.relayUrl", state.settings.relayUrl);
+  state.relay.status = "unknown";
   notify();
 }
 
@@ -124,6 +132,12 @@ export function saveRelaySecret(secret) {
 
 export function setWorkerStatus(status) {
   state.worker.status = status;
+  notify();
+}
+
+export function setRelayStatus(status, { wasSleeping = false } = {}) {
+  state.relay.status = status;
+  state.relay.wasSleeping = wasSleeping;
   notify();
 }
 

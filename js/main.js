@@ -1,5 +1,5 @@
 import {
-  state, subscribe, saveProxyUrl, saveRelayUrl, saveRelaySecret, setWorkerStatus, setPocketCasts, logoutPocketCasts, getJob,
+  state, subscribe, saveProxyUrl, saveRelayUrl, saveRelaySecret, setWorkerStatus, setRelayStatus, setPocketCasts, logoutPocketCasts, getJob,
   isFavorite, toggleFavorite, recordUpload,
   rememberMeSupported, persistPocketCastsSession, restorePersistedPocketCastsSession,
   exportData, importData, setUsage,
@@ -7,6 +7,7 @@ import {
 import * as ivoox from "./api/ivoox.js";
 import * as pocketcasts from "./api/pocketcasts.js";
 import { pingWorker } from "./api/proxy.js";
+import { pingRelay } from "./api/relay.js";
 import { runEpisodeJob } from "./download.js";
 import { toast } from "./components/toast.js";
 import { skeletonGrid, idleState, emptyState, emptyFavoritesState, errorState, proxyMissingState } from "./components/states.js";
@@ -102,6 +103,7 @@ $("#save-relay").addEventListener("click", () => {
   const status = $("#relay-status");
   status.textContent = url ? "Guardado ✓" : "";
   setTimeout(() => { status.textContent = ""; }, 2500);
+  checkRelay();
 });
 
 /** Comprueba si el Worker configurado responde (GET /health). */
@@ -112,6 +114,20 @@ async function checkWorker() {
   setWorkerStatus(ok ? "ok" : "error");
 }
 checkWorker();
+
+// Por encima de esto, el ping tarda tanto que lo más probable es que el
+// servicio estuviera dormido (plan gratuito de Render) y este ping lo
+// haya despertado — no hay forma de preguntárselo directamente.
+const RELAY_SLEEP_THRESHOLD_MS = 3000;
+
+/** Comprueba si el servicio de relevo configurado responde (GET /health). */
+async function checkRelay() {
+  if (!state.settings.relayUrl) { setRelayStatus("unknown"); return; }
+  setRelayStatus("checking");
+  const { ok, ms } = await pingRelay(state.settings.relayUrl);
+  setRelayStatus(ok ? "ok" : "error", { wasSleeping: ms >= RELAY_SLEEP_THRESHOLD_MS });
+}
+checkRelay();
 
 $("#pc-login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -226,6 +242,7 @@ importInput.addEventListener("change", async () => {
     );
     syncSettingsFields(); // el panel de ajustes puede seguir abierto con los campos desactualizados
     if (result.proxyUrlApplied) checkWorker();
+    if (result.relayUrlApplied) checkRelay();
     render();
   } catch (err) {
     toast(`No se ha podido importar el archivo: ${err.message}`, "error");
@@ -588,7 +605,19 @@ function computeConnectionDetails() {
   else if (pc.status === "connected") pocket = { dot: "connected", text: `Conectado como ${pc.email}` };
   else pocket = { dot: "disconnected", text: "Desconectado" };
 
-  return { worker, pocket };
+  // El relevo es opcional (solo hace falta para episodios de más de
+  // 100 MB) y, a diferencia del Worker o Pocket Casts, puede estar
+  // "dormido" (plan gratuito de Render) sin que eso sea un fallo real —
+  // se distingue de un error de verdad para no dar una falsa alarma.
+  const r = state.relay;
+  let relay;
+  if (!state.settings.relayUrl) relay = { dot: "disconnected", text: "Sin configurar (opcional)" };
+  else if (r.status === "checking" || r.status === "unknown") relay = { dot: "connecting", text: "Comprobando conexión…" };
+  else if (r.status === "ok" && r.wasSleeping) relay = { dot: "connected", text: "Activo (estaba dormido, ya despierto)" };
+  else if (r.status === "ok") relay = { dot: "connected", text: "Activo" };
+  else relay = { dot: "error", text: "No responde en esa URL" };
+
+  return { worker, pocket, relay };
 }
 
 function render() {
@@ -597,11 +626,13 @@ function render() {
   $("#pc-status-btn .pc-dot").dataset.state = overall.dot;
   $("#pc-status-label").textContent = overall.label;
 
-  const { worker: workerDetail, pocket: pocketDetail } = computeConnectionDetails();
+  const { worker: workerDetail, pocket: pocketDetail, relay: relayDetail } = computeConnectionDetails();
   $("#tooltip-worker-dot").dataset.state = workerDetail.dot;
   $("#tooltip-worker-text").textContent = workerDetail.text;
   $("#tooltip-pc-dot").dataset.state = pocketDetail.dot;
   $("#tooltip-pc-text").textContent = pocketDetail.text;
+  $("#tooltip-relay-dot").dataset.state = relayDetail.dot;
+  $("#tooltip-relay-text").textContent = relayDetail.text;
 
   const workerHealthEl = $("#worker-health");
   workerHealthEl.className = "worker-health";

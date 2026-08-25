@@ -87,8 +87,11 @@ ninguna de las dos.
   cuánto ocupa cada episodio en su propia fila), para saber cuánto sitio
   te queda antes de que se llene.
 - Indicador de estado combinado en la cabecera: al pasar el ratón o
-  pulsarlo se ve el detalle del Worker y de Pocket Casts por separado —
-  de un vistazo sabes cuál de los dos falla si algo no funciona.
+  pulsarlo se ve el detalle del Worker, de Pocket Casts y del servicio de
+  relevo por separado (si lo tienes configurado) — de un vistazo sabes
+  cuál de los tres falla si algo no funciona. El del relevo distingue
+  además "activo" de "estaba dormido, ya despierto" (plan gratuito de
+  Render), para que un arranque en frío no parezca un error.
 
 **Favoritos e historial**
 - Marca programas como favoritos con un toque (desde la tarjeta de
