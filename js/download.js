@@ -25,7 +25,7 @@
 
 import { state, setJob } from "./state.js";
 import { imageProxyUrl } from "./api/ivoox.js";
-import { uploadEpisodeFromIvoox, uploadImage, requestEpisodeUploadInit } from "./api/pocketcasts.js";
+import { uploadEpisodeFromIvoox, uploadImage, requestEpisodeUploadInit, cancelEpisodeUpload } from "./api/pocketcasts.js";
 import { relayUpload } from "./api/relay.js";
 import { uuid, LARGE_EPISODE_BYTES } from "./utils.js";
 
@@ -174,6 +174,13 @@ export async function runEpisodeJob(episode) {
  * autorizada (petición pequeña, sin el audio), y luego es el relevo quien
  * hace el streaming real de iVoox a Pocket Casts — el audio no pasa ni
  * por el navegador ni por el Worker en ningún momento.
+ *
+ * En cuanto requestEpisodeUploadInit() tiene éxito, Pocket Casts YA ha
+ * creado un registro para este fichero (con `init.uuid`), aunque el
+ * audio en sí todavía no le haya llegado. Si el paso del relevo falla o
+ * se cancela a partir de aquí, ese registro se queda huérfano en
+ * "Procesando…" para siempre a menos que se borre explícitamente — de
+ * ahí el cancelEpisodeUpload() del catch.
  */
 async function uploadAudioViaRelay(episode, imageBlob, signal) {
   const init = await requestEpisodeUploadInit(
@@ -181,12 +188,17 @@ async function uploadAudioViaRelay(episode, imageBlob, signal) {
     { title: episode.title, hasImage: !!imageBlob },
     state.pocketcasts.token,
   );
-  await relayUpload(
-    { audioUrl: init.audioUrl, uploadUrl: init.uploadUrl, contentType: init.contentType, size: init.size },
-    state.settings.relayUrl,
-    state.settings.relaySecret,
-    signal,
-  );
+  try {
+    await relayUpload(
+      { audioUrl: init.audioUrl, uploadUrl: init.uploadUrl, contentType: init.contentType, size: init.size },
+      state.settings.relayUrl,
+      state.settings.relaySecret,
+      signal,
+    );
+  } catch (err) {
+    await cancelEpisodeUpload(init.uuid, state.pocketcasts.token);
+    throw err;
+  }
   return { uuid: init.uuid };
 }
 

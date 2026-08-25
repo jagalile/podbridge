@@ -78,6 +78,8 @@ export default {
           return handlePocketCastsUploadEpisode(request, env);
         case "POST /pocketcasts/upload-episode-init":
           return handlePocketCastsUploadEpisodeInit(request, env);
+        case "POST /pocketcasts/upload-episode-cancel":
+          return handlePocketCastsUploadEpisodeCancel(request, env);
         case "POST /pocketcasts/upload-image":
           return handlePocketCastsUploadImage(request, env);
         default:
@@ -883,50 +885,85 @@ async function handlePocketCastsUploadEpisode(request, env) {
   //      con un bucle que SÍ espera (`await writer.write(chunk)`) a que
   //      el lado de escritura esté listo antes de pedir el siguiente,
   //      igual que pipeTo() debería hacer pero aquí no lo hace bien.
-  const { readable, writable } = new FixedLengthStream(size);
-  pumpWithBackpressure(audioRes.body, writable, { label: "iVoox→PC" }); // sin esperar: corre en paralelo al fetch de abajo
-
-  let putRes;
+  // A partir de aquí Pocket Casts YA tiene un registro del fichero (con
+  // el uuid `id`), aunque el audio en sí todavía no le haya llegado — si
+  // algo falla de aquí en adelante, ese registro se queda huérfano en
+  // "Procesando…" para siempre a menos que se borre explícitamente (ver
+  // deleteUploadedFile). Por eso todo lo que sigue va en un try/catch que
+  // limpia antes de devolver o relanzar el error.
   try {
-    putRes = await fetch(presignedUrl, {
+    const { readable, writable } = new FixedLengthStream(size);
+    pumpWithBackpressure(audioRes.body, writable, { label: "iVoox→PC" }); // sin esperar: corre en paralelo al fetch de abajo
+
+    const putRes = await fetch(presignedUrl, {
       method: "PUT",
       headers: { "Content-Type": contentType },
       body: readable,
       duplex: "half",
       signal: AbortSignal.timeout(15 * 60 * 1000),
     });
+
+    if (!putRes.ok) {
+      // Diagnóstico no sensible (nunca la URL pre-firmada ni nada del
+      // token): con varios intentos fallidos seguidos con errores
+      // distintos (413, 501, 413 de nuevo) para los mismos episodios
+      // grandes, hace falta ver qué contesta realmente el otro lado en
+      // vez de seguir adivinando — en concreto, si trae cabeceras
+      // típicas de S3 (server, x-amz-request-id) la petición sí llegó
+      // al almacenamiento y lo rechazó él; si no trae ninguna, lo más
+      // probable es que Cloudflare la haya cortado antes de salir de su
+      // red.
+      const bodyText = await putRes.text().catch(() => "");
+      await deleteUploadedFile(id, token);
+      return json(
+        {
+          error: `Falló la subida del audio al almacenamiento de Pocket Casts (${putRes.status})`,
+          debug: {
+            status: putRes.status,
+            server: putRes.headers.get("server"),
+            amzRequestId: putRes.headers.get("x-amz-request-id"),
+            cfRay: putRes.headers.get("cf-ray"),
+            contentType: putRes.headers.get("content-type"),
+            bodySnippet: bodyText.slice(0, 400),
+          },
+        },
+        env,
+        502,
+      );
+    }
+
+    return json({ ok: true, uuid: id, title }, env);
   } catch (err) {
-    console.error(`upload-episode: el PUT a Pocket Casts lanzó una excepción — ${err.message || err}`);
+    console.error(`upload-episode: falló durante el PUT — ${err.message || err}`);
+    await deleteUploadedFile(id, token);
     throw err;
   }
-  if (!putRes.ok) {
-    // Diagnóstico no sensible (nunca la URL pre-firmada ni nada del
-    // token): con tres intentos fallidos seguidos con errores distintos
-    // (413, 501, 413 de nuevo) para los mismos episodios grandes, hace
-    // falta ver qué contesta realmente el otro lado en vez de seguir
-    // adivinando — en concreto, si trae cabeceras típicas de S3
-    // (server, x-amz-request-id) la petición sí llegó al almacenamiento
-    // y lo rechazó él; si no trae ninguna, lo más probable es que
-    // Cloudflare la haya cortado antes de salir de su red.
-    const bodyText = await putRes.text().catch(() => "");
-    return json(
-      {
-        error: `Falló la subida del audio al almacenamiento de Pocket Casts (${putRes.status})`,
-        debug: {
-          status: putRes.status,
-          server: putRes.headers.get("server"),
-          amzRequestId: putRes.headers.get("x-amz-request-id"),
-          cfRay: putRes.headers.get("cf-ray"),
-          contentType: putRes.headers.get("content-type"),
-          bodySnippet: bodyText.slice(0, 400),
-        },
-      },
-      env,
-      502,
-    );
-  }
+}
 
-  return json({ ok: true, uuid: id, title }, env);
+/**
+ * Limpieza best-effort de un fichero registrado en Pocket Casts (Files_
+ * FileDeleteRequest: campo 1 = uuid) cuya subida ha fallado después de
+ * que Pocket Casts ya le hubiera dado un hueco — sin esto, cada intento
+ * fallido deja una entrada huérfana en "Procesando…" para siempre en la
+ * cuenta del usuario (así es como se descubrió esto: una lista larga de
+ * duplicados sin terminar de subir nunca, uno por cada intento fallido
+ * durante el desarrollo). Nunca lanza: si el borrado también falla, no
+ * debe tapar el error original que provocó la limpieza.
+ */
+async function deleteUploadedFile(uuid, token) {
+  try {
+    const res = await fetch(`https://api.pocketcasts.com/files/${uuid}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+      body: encodeStringField(1, uuid),
+    });
+    // Un 404 significa que ya no existía (p. ej. borrado a mano) — también cuenta como éxito.
+    if (!res.ok && res.status !== 404) {
+      console.error(`deleteUploadedFile: Pocket Casts respondió ${res.status} al borrar ${uuid}`);
+    }
+  } catch (err) {
+    console.error(`deleteUploadedFile: excepción al borrar ${uuid} — ${err.message || err}`);
+  }
 }
 
 /**
@@ -995,6 +1032,27 @@ async function handlePocketCastsUploadEpisodeInit(request, env) {
   }
 
   return json({ ok: true, uuid: id, uploadUrl: presignedUrl, audioUrl, contentType, size }, env);
+}
+
+/**
+ * El navegador llama a esto cuando la subida por el servicio de relevo
+ * (episodios grandes, ver handlePocketCastsUploadEpisodeInit) falla o se
+ * cancela después de que Pocket Casts ya hubiera creado el registro del
+ * fichero — el servicio de relevo no tiene el token de Pocket Casts para
+ * poder borrarlo él mismo, así que se lo pide al Worker. Siempre
+ * responde `ok`, incluso si el borrado en sí falla (best-effort: no debe
+ * bloquear que la UI pase a error con el motivo real).
+ */
+async function handlePocketCastsUploadEpisodeCancel(request, env) {
+  const authHeader = request.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  if (!token) return errorResponse("Falta el token de Pocket Casts", env, 401);
+
+  const { uuid } = await request.json();
+  if (!uuid) return errorResponse("Falta el uuid del fichero", env, 400);
+
+  await deleteUploadedFile(uuid, token);
+  return json({ ok: true }, env);
 }
 
 /**

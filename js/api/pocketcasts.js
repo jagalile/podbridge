@@ -72,6 +72,30 @@ export async function requestEpisodeUploadInit(episodeUrl, meta, token) {
 }
 
 /**
+ * Borra en Pocket Casts el registro de un fichero cuya subida ha
+ * fallado o se ha cancelado — sin esto, cada intento fallido con el
+ * servicio de relevo (episodios grandes) deja una entrada huérfana en
+ * "Procesando…" para siempre en la cuenta del usuario. Solo hace falta
+ * llamar a esto para la vía del relevo: la subida normal por el Worker
+ * hace su propia limpieza internamente si algo falla.
+ *
+ * Best-effort a propósito: si esto falla, no debe tapar ni retrasar que
+ * la UI muestre el error real que provocó la limpieza.
+ *
+ * @param {string} uuid
+ * @param {string} token
+ */
+export async function cancelEpisodeUpload(uuid, token) {
+  try {
+    await postJson(
+      "/pocketcasts/upload-episode-cancel",
+      { uuid },
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+  } catch { /* best-effort, ver doc de arriba */ }
+}
+
+/**
  * Sube la portada de un episodio ya subido. Paso independiente y opcional:
  * si falla, el episodio se queda en Pocket Casts sin portada personalizada,
  * nada más — nunca hace fallar la subida principal.

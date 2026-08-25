@@ -270,6 +270,7 @@ olvidar la sesión recordada en cualquier momento, basta con desactivarlo.
 | `GET /pocketcasts/usage` | Espacio usado/disponible en Archivos (bytes) |
 | `POST /pocketcasts/upload-episode` | Episodios de hasta 100 MB: descarga el audio de iVoox y lo sube a Archivos, del todo en el Worker |
 | `POST /pocketcasts/upload-episode-init` | Episodios de más de 100 MB: solo consigue la URL de subida, para el servicio de relevo (ver "Episodios muy grandes") |
+| `POST /pocketcasts/upload-episode-cancel` | Borra en Pocket Casts el registro de un fichero cuya subida por el relevo ha fallado o se ha cancelado |
 | `POST /pocketcasts/upload-image` | Sube la portada de un episodio ya subido |
 
 El tamaño de cada episodio que se ve en la lista sale de una petición
@@ -298,6 +299,22 @@ portada, hay un segundo paso independiente — `POST /files/upload/image`
 con el mismo `uuid` — que da otra URL pre-firmada para la imagen; si ese
 segundo paso falla no bloquea nada, el episodio se queda sin portada
 propia.
+
+Importante: en cuanto `/files/upload/request` responde, Pocket Casts **ya
+ha creado el registro del fichero** en la cuenta del usuario (se ve en la
+app como "Procesando…"), aunque el audio en sí todavía no le haya
+llegado. Si la subida falla después de ese punto sin borrar ese
+registro, se queda huérfano ahí para siempre — así se descubrió esto en
+la práctica: una cuenta llena de duplicados sin terminar de subir nunca,
+uno por cada intento fallido. Por eso tanto
+`handlePocketCastsUploadEpisode` como el flujo del relevo externo
+llaman a `DELETE /files/<uuid>` (`Files_FileDeleteRequest`, campo 1 =
+`uuid`) en cuanto detectan que la subida ha fallado o se ha cancelado —
+es limpieza best-effort (nunca bloquea ni tapa el error real) pero evita
+que cada reintento deje basura en la cuenta. Si tienes entradas antiguas
+de antes de este cambio, bórralas a mano desde la app o la web de Pocket
+Casts — son inofensivas (nunca llegaron a tener contenido real), solo
+ocupan sitio en la lista.
 
 El audio en sí **no llega a pasar por el navegador**: `/pocketcasts/upload-episode`
 recibe solo la URL del episodio y el título (una petición pequeña), y es
