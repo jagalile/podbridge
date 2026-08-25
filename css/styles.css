@@ -96,21 +96,22 @@ code {
   align-items: center;
   justify-content: space-between;
   padding: 8px 0 28px;
-  gap: 16px;
+  gap: 12px;
 }
-.brand { display: flex; align-items: center; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .brand-mark {
   font-size: 26px;
   width: 44px; height: 44px;
+  flex: none;
   display: grid; place-items: center;
   background: var(--accent-soft);
   border-radius: var(--radius-m);
 }
-.brand-text { display: flex; flex-direction: column; line-height: 1.2; font-family: var(--font-display); }
+.brand-text { display: flex; flex-direction: column; line-height: 1.2; font-family: var(--font-display); min-width: 0; }
 .brand-text strong { font-size: 17px; letter-spacing: -.01em; }
-.brand-text span { font-size: 12.5px; color: var(--text-muted); }
+.brand-text span { font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.header-actions { display: flex; align-items: center; gap: 10px; }
+.header-actions { display: flex; align-items: center; gap: 10px; flex: none; }
 
 .pc-status {
   display: flex; align-items: center; gap: 8px;
@@ -122,7 +123,9 @@ code {
   color: var(--text-muted);
   cursor: pointer;
   transition: border-color .15s ease, color .15s ease;
+  min-width: 0; /* deja que el label de dentro se pueda truncar en vez de desbordar */
 }
+.pc-status span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-status:hover { border-color: var(--accent); color: var(--text); }
 .pc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); flex: none; }
 .pc-dot[data-state="connected"] { background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); }
@@ -365,13 +368,14 @@ code {
 }
 .program-header-description.is-expanded { -webkit-line-clamp: unset; overflow: visible; }
 .read-more-btn {
-  display: inline-block; margin: 0 0 10px;
+  display: block; margin: 0 0 14px;
   background: none; border: none; padding: 0;
   font-size: 13px; font-weight: 700; color: var(--accent); cursor: pointer;
 }
 .read-more-btn:hover { text-decoration: underline; }
 .program-header-link {
   display: inline-flex; align-items: center; gap: 5px;
+  margin-top: 4px;
   font-size: 13px; font-weight: 700; color: var(--accent);
   text-decoration: none;
 }
@@ -472,6 +476,9 @@ code {
 .field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .field-row { display: flex; align-items: center; gap: 12px; }
 .field-status { font-size: 12.5px; color: var(--success); }
+.worker-health { font-size: 12.5px; color: var(--text-faint); margin: 10px 0 0; }
+.worker-health.is-ok { color: var(--success); }
+.worker-health.is-error { color: var(--danger); }
 .field-error {
   font-size: 12.5px; color: var(--danger);
   background: var(--danger-soft);
@@ -539,9 +546,42 @@ code {
 /* ===== Responsive ===== */
 @media (max-width: 640px) {
   .app-shell { padding: 16px 16px 48px; }
-  .episode-card { grid-template-columns: 52px 1fr; }
+
+  .app-header { padding: 4px 0 20px; }
+  .brand-text span { max-width: 38vw; }
+  .pc-status span:last-child { max-width: 34vw; }
+
+  .search-bar { gap: 8px; }
+
+  .program-header { padding: 16px; gap: 14px; }
+  .program-header img { width: 64px; height: 64px; }
+
+  .episode-card {
+    grid-template-columns: 64px 1fr;
+    row-gap: 10px;
+  }
   .episode-actions { grid-column: 1 / -1; justify-content: flex-end; }
-  .episode-row { flex-direction: column; align-items: stretch; }
-  .episode-actions { justify-content: flex-end; }
+
+  /* En vez de apilar imagen/título/acciones en columna (que separaba la
+     portada del título en su propia línea), se deja en flex-wrap: la
+     portada y el título se quedan juntos en la primera línea mientras
+     quepan, y las acciones bajan enteras a la siguiente. */
+  .episode-row { flex-wrap: wrap; row-gap: 10px; }
+  .episode-row-main { flex-basis: 180px; }
+  .episode-actions { flex-basis: 100%; justify-content: flex-end; }
+
+  .action-btn { min-width: 150px; }
+
   .settings-panel { width: 100%; }
+  .episode-modal-content { padding: 16px 16px 0; }
+  .episode-modal-footer { padding: 16px 16px 0; }
+}
+
+@media (max-width: 480px) {
+  .brand-text span { display: none; } /* con tan poco ancho, el subtítulo sobra */
+  .pc-status span:last-child { max-width: 30vw; }
+
+  .program-header { flex-direction: column; }
+  .program-header img { width: 56px; height: 56px; }
+  .program-header-link { margin-top: 8px; }
 }

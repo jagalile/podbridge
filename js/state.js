@@ -7,6 +7,9 @@ export const state = {
   settings: {
     proxyUrl: localStorage.getItem("pb.proxyUrl") || "",
   },
+  worker: {
+    status: "unknown", // unknown | checking | ok | error (solo si hay proxyUrl configurada)
+  },
   pocketcasts: {
     email: sessionStorage.getItem("pb.pc.email") || "",
     token: sessionStorage.getItem("pb.pc.token") || "",
@@ -57,6 +60,12 @@ export function getJob(id) {
 export function saveProxyUrl(url) {
   state.settings.proxyUrl = url.trim().replace(/\/+$/, "");
   localStorage.setItem("pb.proxyUrl", state.settings.proxyUrl);
+  state.worker.status = "unknown";
+  notify();
+}
+
+export function setWorkerStatus(status) {
+  state.worker.status = status;
   notify();
 }
 

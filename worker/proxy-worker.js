@@ -58,6 +58,8 @@ export default {
     const url = new URL(request.url);
     try {
       switch (`${request.method} ${url.pathname}`) {
+        case "GET /health":
+          return json({ ok: true, name: "podbridge-proxy" }, env);
         case "GET /ivoox/search":
           return handleSearch(url, env);
         case "GET /ivoox/program":

@@ -1,6 +1,7 @@
-import { state, subscribe, saveProxyUrl, setPocketCasts, logoutPocketCasts, getJob } from "./state.js";
+import { state, subscribe, saveProxyUrl, setWorkerStatus, setPocketCasts, logoutPocketCasts, getJob } from "./state.js";
 import * as ivoox from "./api/ivoox.js";
 import * as pocketcasts from "./api/pocketcasts.js";
+import { pingWorker } from "./api/proxy.js";
 import { runEpisodeJob } from "./download.js";
 import { toast } from "./components/toast.js";
 import { skeletonGrid, idleState, emptyState, errorState, proxyMissingState } from "./components/states.js";
@@ -45,7 +46,17 @@ $("#save-proxy").addEventListener("click", () => {
   status.textContent = value ? "Guardado ✓" : "";
   setTimeout(() => { status.textContent = ""; }, 2500);
   render();
+  checkWorker();
 });
+
+/** Comprueba si el Worker configurado responde (GET /health). */
+async function checkWorker() {
+  if (!state.settings.proxyUrl) { setWorkerStatus("unknown"); return; }
+  setWorkerStatus("checking");
+  const ok = await pingWorker(state.settings.proxyUrl);
+  setWorkerStatus(ok ? "ok" : "error");
+}
+checkWorker();
 
 $("#pc-login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -339,15 +350,45 @@ async function handleEpisodeAction(episode, btn) {
 // ---------------------------------------------------------------------------
 // Render reactivo global (botones de acción + estado de conexión PC)
 // ---------------------------------------------------------------------------
+/**
+ * Estado combinado que se ve en la cabecera: antes solo reflejaba Pocket
+ * Casts, pero si el Worker no está configurado o no responde el usuario
+ * veía "Pocket Casts desconectado" sin ninguna pista de que el problema
+ * real era el puente, no la cuenta.
+ */
+function computeOverallStatus() {
+  const w = state.worker.status;
+  const pc = state.pocketcasts;
+
+  if (!state.settings.proxyUrl) return { dot: "disconnected", label: "Configura el Worker" };
+  if (w === "checking" || w === "unknown") return { dot: "connecting", label: "Comprobando conexión…" };
+  if (w === "error") return { dot: "error", label: "El Worker no responde" };
+
+  if (pc.status === "connecting") return { dot: "connecting", label: "Conectando a Pocket Casts…" };
+  if (pc.status === "error") return { dot: "error", label: "Error con Pocket Casts" };
+  if (pc.status === "connected") return { dot: "connected", label: `Conectado como ${pc.email}` };
+  return { dot: "disconnected", label: "Pocket Casts desconectado" };
+}
+
 function render() {
   const pc = state.pocketcasts;
-  $(".pc-dot").dataset.state = pc.status;
-  $("#pc-status-label").textContent = {
-    connected: `Conectado como ${pc.email}`,
-    connecting: "Conectando…",
-    error: "Error de conexión",
-    disconnected: "Pocket Casts desconectado",
-  }[pc.status];
+  const overall = computeOverallStatus();
+  $(".pc-dot").dataset.state = overall.dot;
+  $("#pc-status-label").textContent = overall.label;
+
+  const workerHealthEl = $("#worker-health");
+  workerHealthEl.className = "worker-health";
+  if (!state.settings.proxyUrl) {
+    workerHealthEl.textContent = "";
+  } else if (state.worker.status === "checking" || state.worker.status === "unknown") {
+    workerHealthEl.textContent = "Comprobando conexión con el Worker…";
+  } else if (state.worker.status === "ok") {
+    workerHealthEl.textContent = "✓ El Worker responde correctamente";
+    workerHealthEl.classList.add("is-ok");
+  } else {
+    workerHealthEl.textContent = "✗ El Worker no responde en esa URL";
+    workerHealthEl.classList.add("is-error");
+  }
 
   const connected = pc.status === "connected";
   $("#pc-login-fields").hidden = connected;

@@ -58,4 +58,16 @@ export async function postJson(path, body, opts = {}) {
   return res.json();
 }
 
+/** true si el Worker configurado en Ajustes responde. No lanza si falla. */
+export async function pingWorker(url) {
+  try {
+    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return !!data.ok;
+  } catch {
+    return false;
+  }
+}
+
 export { request };
