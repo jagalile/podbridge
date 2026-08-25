@@ -54,8 +54,31 @@ export function cancelJob(id, message = "Cancelado.") {
   controller.abort(new DOMException(message, "AbortError"));
 }
 
-// Cada pocos segundos se revisa si algún job lleva demasiado sin dar señales de vida.
+// Cada pocos segundos se revisa si algún job lleva demasiado sin dar
+// señales de vida — con un cuidado importante: en móvil, apagar la
+// pantalla o cambiar de pestaña hace que el navegador pause o retrase
+// mucho los timers en segundo plano (para ahorrar batería), así que un
+// job que en realidad iba bien puede acumular varios minutos "sin
+// actividad" solo porque no ha habido ocasión de comprobarlo — no porque
+// se haya atascado de verdad. Sin este cuidado, la primera comprobación
+// al volver a primer plano ve ese hueco enorme y cancela el job en
+// seco, aunque el audio ya se hubiera subido bien por debajo.
+let pageHidden = typeof document !== "undefined" && document.hidden;
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    pageHidden = document.hidden;
+    if (!pageHidden) {
+      // Al volver, se da a todos los jobs en curso el beneficio de la
+      // duda: se resetea su última actividad a "ahora" en vez de dejar
+      // que el próximo tick los vea con minutos de retraso acumulado.
+      const now = Date.now();
+      for (const id of lastActivity.keys()) lastActivity.set(id, now);
+    }
+  });
+}
+
 setInterval(() => {
+  if (pageHidden) return; // no evaluar atascos mientras está en segundo plano
   const now = Date.now();
   for (const [id, since] of lastActivity) {
     if (now - since > STALL_TIMEOUT_MS) {
@@ -151,8 +174,16 @@ export async function runEpisodeJob(episode) {
           (p) => { touch(); setJob(id, { progress: base + p * w.uploadImage }); },
           signal,
         );
-      } catch (err) {
-        if (signal.aborted) throw err; // el episodio ya está subido; si no es un aborto, la portada es solo un extra
+      } catch {
+        // El audio ya está subido en Pocket Casts a estas alturas — pase
+        // lo que pase con la portada (fallo real, o un aborto del
+        // vigilante de atascos, típico si el móvil apaga la pantalla a
+        // media subida y el navegador congela los timers un rato), el
+        // episodio sigue siendo un éxito. Antes un aborto aquí sí tiraba
+        // todo el job a error aunque el audio llevara rato subido de
+        // verdad — no tiene sentido: no hay forma de "deshacer" un
+        // audio que ya está en Pocket Casts, así que más vale dejarlo
+        // como hecho y como mucho perder la portada.
       }
     }
 

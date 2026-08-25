@@ -713,6 +713,19 @@ code {
   .brand-text span { max-width: 38vw; }
   .pc-status span:last-child { max-width: 34vw; }
 
+  /* En escritorio, cada tooltip se ancla a su propia pastilla (estrecha)
+     con `right: 0` — en un móvil estrecho eso puede sacar la mitad del
+     tooltip fuera de la pantalla por la izquierda, según en qué parte de
+     la cabecera caiga esa pastilla en concreto. Se resuelve haciendo que
+     el tooltip se ancle a toda la cabecera en vez de a la pastilla:
+     quitarles `position: relative` a los envoltorios estrechos hace que
+     el `position: absolute` del tooltip suba hasta el siguiente
+     ancestro posicionado, que pasa a ser `.app-header` entero. */
+  .app-header { position: relative; }
+  .pc-status-wrap, .jobs-status-wrap { position: static; }
+  .status-tooltip { left: 16px; right: 16px; width: auto; }
+  .jobs-tooltip { width: auto; }
+
   .search-bar { gap: 8px; }
 
   .program-header { padding: 16px; gap: 14px; }
