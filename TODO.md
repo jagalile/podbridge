@@ -1,7 +1,0 @@
-- [] Mostrar el porcentaje de llenado de los Archivos de la cuenta de Pocket Cast
-- [] Botón de info del progreso de todos los episodios que tienes en la cola
-- [x] Al recargar la página se pierde la url del worker, debería mostrarse como la cuenta de Pocket Cast cuando ya está configurada. Si vuelves a darle a los botones de ajustes o de cuenta de Pocket Cast vuelve a aparecer la url del worker así que será algo visual.
-- [] Solo deben aparecer los episodios del podcast en la lista de episodios, ahora aparecen tambien los enlaces de sugerencias de Ivoox como episodios
-- [-] En el programa debe haber un link al programa en Ivoox y que se abra en una pestaña nueva. Se mostrará la información del programa igual que la de los episodios
-- [] Si el programa es Ivoox originals tiene que estar identificado de alguna manera, un border naranja por ejemplo
-- [-] Subir también la imagen del episodio a Pocket Cast

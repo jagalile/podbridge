@@ -263,14 +263,14 @@ function renderProgram() {
       <img src="${info.image || ""}" alt="" onerror="this.style.visibility='hidden'" />
       <div class="program-header-body">
         <h2>${escapeHtml(info.title)} ${badge}</h2>
-        ${description ? `
-          <p class="program-header-description" id="program-description">${escapeHtml(description)}</p>
-          <button type="button" class="read-more-btn" id="program-read-more" hidden>Leer más</button>
-        ` : ""}
-        <a class="program-header-link" href="${info.url}" target="_blank" rel="noopener noreferrer">
-          Ver en iVoox
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg>
-        </a>
+        ${description ? `<p class="program-header-description" id="program-description">${escapeHtml(description)}</p>` : ""}
+        <div class="program-header-footer">
+          ${description ? `<button type="button" class="read-more-btn" id="program-read-more" hidden>Leer más</button>` : ""}
+          <a class="program-header-link" href="${info.url}" target="_blank" rel="noopener noreferrer">
+            Ver en iVoox
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg>
+          </a>
+        </div>
       </div>
     `;
 
