@@ -487,8 +487,26 @@ code {
   border-bottom: 1px solid var(--border);
 }
 .settings-head h2 { font-family: var(--font-display); font-size: 17px; margin: 0; }
-.settings-body { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 28px; }
-.settings-section h3 { font-size: 14px; margin: 0 0 6px; font-family: var(--font-display); }
+.settings-body { padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; background: var(--bg-sunken); }
+
+/* Cada bloque de ajustes es una tarjeta propia — antes eran solo
+   secciones separadas por espacio en blanco, que en una columna larga se
+   veía como un totum revolutum sin jerarquía visual. */
+.settings-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  padding: 16px;
+}
+.settings-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.settings-card-icon {
+  width: 26px; height: 26px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.settings-card h3 { font-size: 14px; margin: 0; font-family: var(--font-display); }
 .hint { font-size: 12.5px; color: var(--text-muted); margin: 0 0 14px; line-height: 1.5; }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; font-size: 13px; font-weight: 600; }
@@ -505,20 +523,50 @@ code {
 .field-row { display: flex; align-items: center; gap: 12px; }
 .field-status { font-size: 12.5px; color: var(--success); }
 
-.checkbox-field {
-  display: flex; align-items: flex-start; gap: 8px;
+/* Ficha de cuenta conectada: antes era una fila que envolvía mal con
+   emails largos (el botón "Desconectar" quedaba flotando junto a la
+   primera línea del email). Ahora es su propio bloque con el email en
+   una columna que puede partirse limpiamente y el botón siempre
+   alineado a la derecha, sin que se monten. */
+.pc-account-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+.pc-account-card > div { min-width: 0; }
+.pc-account-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); margin: 0 0 2px; font-weight: 700; }
+.pc-account-email { font-size: 13.5px; font-weight: 700; margin: 0; word-break: break-all; }
+
+/* Interruptor tipo slider (no un checkbox nativo) */
+.switch-field {
+  display: flex; align-items: center; gap: 10px;
   margin-bottom: 14px; font-size: 12.5px; font-weight: 400; color: var(--text-muted);
   cursor: pointer;
 }
-.checkbox-field input { margin-top: 2px; accent-color: var(--accent); }
-
-.hint-small { font-size: 12px; margin: 12px 0 0; }
-.link-btn {
-  display: block; margin-top: 4px;
-  background: none; border: none; padding: 0;
-  font-size: 12px; font-weight: 700; color: var(--accent); cursor: pointer;
+.switch { position: relative; flex: none; width: 38px; height: 22px; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.switch-track {
+  position: absolute; inset: 0;
+  background: var(--border);
+  border-radius: 999px;
+  transition: background .15s ease;
 }
-.link-btn:hover { text-decoration: underline; }
+.switch-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-s);
+  transition: transform .15s ease;
+}
+.switch input:checked ~ .switch-track { background: var(--accent); }
+.switch input:checked ~ .switch-track .switch-thumb { transform: translateX(16px); }
+.switch input:focus-visible ~ .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.hint-small { font-size: 12px; margin: 0; }
 .worker-health { font-size: 12.5px; color: var(--text-faint); margin: 10px 0 0; }
 .worker-health.is-ok { color: var(--success); }
 .worker-health.is-error { color: var(--danger); }

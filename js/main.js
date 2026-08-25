@@ -161,8 +161,9 @@ importInput.addEventListener("change", async () => {
 const searchForm = $("#search-form");
 const searchInput = $("#search-input");
 
-const searchSubmitBtn = searchForm.querySelector("button[type=submit]");
-
+// El botón "Buscar" se queda oculto en el HTML (solo para que Enter siga
+// enviando el formulario en cualquier navegador): la búsqueda se dispara
+// sola al escribir, igual que el filtro de la pestaña Favoritos.
 document.querySelectorAll(".search-type .chip").forEach((chip) => {
   chip.addEventListener("click", () => {
     document.querySelectorAll(".search-type .chip").forEach((c) => {
@@ -176,7 +177,6 @@ document.querySelectorAll(".search-type .chip").forEach((chip) => {
     searchInput.value = "";
 
     const isFavoritesTab = state.search.type === "favorites";
-    searchSubmitBtn.hidden = isFavoritesTab;
     searchInput.placeholder = isFavoritesTab
       ? "Buscar en tus favoritos…"
       : "Ej. “La Script” o “Nadie Sabe Nada”";
