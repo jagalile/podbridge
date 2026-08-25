@@ -1,0 +1,8 @@
+name = "podbridge-proxy"
+main = "proxy-worker.js"
+compatibility_date = "2026-01-01"
+
+# Restringe esto al origen real de tu GitHub Pages una vez desplegado,
+# p.ej. "https://tu-usuario.github.io". "*" es cómodo para probar en local.
+[vars]
+ALLOWED_ORIGIN = "*"

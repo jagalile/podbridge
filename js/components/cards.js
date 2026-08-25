@@ -1,0 +1,116 @@
+// Renderizado de tarjetas: programa (resultado de búsqueda), episodio
+// (resultado de búsqueda) y fila de episodio (dentro de un programa).
+// Todas comparten el botón de acción de descarga/subida.
+
+import { clone, fmtDuration, fmtDate, escapeHtml } from "../utils.js";
+import { getJob } from "../state.js";
+
+const FALLBACK_COVER =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23e3e1db'/%3E%3Ctext x='50' y='58' font-size='40' text-anchor='middle'%3E%F0%9F%8E%99%EF%B8%8F%3C/text%3E%3C/svg%3E";
+
+export function renderProgramCard(program, onOpen) {
+  const node = clone("tpl-program-card");
+  const img = node.querySelector("img");
+  img.src = program.image || FALLBACK_COVER;
+  img.alt = program.title;
+  img.onerror = () => { img.src = FALLBACK_COVER; };
+
+  if (program.isOriginal) node.querySelector(".badge-original").hidden = false;
+
+  node.querySelector(".program-title").textContent = program.title;
+  node.querySelector(".program-author").textContent = program.author || "";
+  node.addEventListener("click", () => onOpen(program));
+  return node;
+}
+
+export function renderEpisodeCard(episode, onAction) {
+  const node = clone("tpl-episode-card");
+  const img = node.querySelector("img");
+  img.src = episode.image || FALLBACK_COVER;
+  img.alt = episode.title;
+  img.onerror = () => { img.src = FALLBACK_COVER; };
+  if (episode.isOriginal) node.querySelector(".badge-original").hidden = false;
+
+  node.querySelector(".episode-program").textContent = episode.program || "";
+  node.querySelector(".episode-title").textContent = episode.title;
+  node.querySelector(".episode-title").title = episode.title;
+  node.querySelector(".episode-meta").innerHTML = metaHtml(episode);
+  node.querySelector(".episode-actions").appendChild(actionButton(episode, onAction));
+  return node;
+}
+
+export function renderEpisodeRow(episode, onAction) {
+  const node = clone("tpl-episode-row");
+  node.querySelector(".episode-title").textContent = episode.title;
+  node.querySelector(".episode-meta").innerHTML = metaHtml(episode);
+  node.querySelector(".episode-actions").appendChild(actionButton(episode, onAction));
+  return node;
+}
+
+function metaHtml(episode) {
+  const bits = [];
+  if (episode.date) bits.push(escapeHtml(fmtDate(episode.date)));
+  if (episode.duration) bits.push(escapeHtml(fmtDuration(episode.duration)));
+  let html = bits.map((b) => `<span>${b}</span>`).join(" · ");
+  if (episode.isOriginal) html += ` <span class="tag-original">Originals</span>`;
+  if (episode.isExclusive) html += ` <span class="tag-exclusive">🔒 Exclusivo</span>`;
+  return html;
+}
+
+function actionButton(episode, onAction) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "action-btn";
+  btn.dataset.episodeId = episode.id;
+  applyJobState(btn, episode);
+  btn.addEventListener("click", () => {
+    if (btn.classList.contains("is-locked") || btn.classList.contains("is-working")) return;
+    onAction(episode, btn);
+  });
+  return btn;
+}
+
+/** Sincroniza el aspecto de un botón de acción con el job actual (id = episode.id). */
+export function applyJobState(btn, episode) {
+  const job = getJob(episode.id);
+
+  if (episode.isExclusive) {
+    btn.className = "action-btn is-locked";
+    btn.disabled = true;
+    btn.innerHTML = `🔒 Exclusivo`;
+    return;
+  }
+  if (!episode.downloadUrl) {
+    btn.className = "action-btn is-locked";
+    btn.disabled = true;
+    btn.innerHTML = `— No disponible`;
+    btn.title = "No hemos podido localizar el audio descargable de este episodio.";
+    return;
+  }
+
+  btn.disabled = false;
+  switch (job.status) {
+    case "downloading":
+      btn.className = "action-btn is-working";
+      btn.innerHTML = `<span class="spinner"></span> Descargando… ${Math.round(job.progress * 100)}%`;
+      btn.disabled = true;
+      break;
+    case "uploading":
+      btn.className = "action-btn is-working";
+      btn.innerHTML = `<span class="spinner"></span> Subiendo… ${Math.round(job.progress * 100)}%`;
+      btn.disabled = true;
+      break;
+    case "done":
+      btn.className = "action-btn is-done";
+      btn.innerHTML = `✓ En Pocket Casts`;
+      break;
+    case "error":
+      btn.className = "action-btn is-error";
+      btn.innerHTML = `⚠️ Reintentar`;
+      btn.title = job.error || "";
+      break;
+    default:
+      btn.className = "action-btn";
+      btn.innerHTML = `⬇️ Descargar y subir`;
+  }
+}

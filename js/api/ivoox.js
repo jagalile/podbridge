@@ -1,0 +1,31 @@
+// Capa de acceso a iVoox. iVoox no ofrece API JSON pública: el Worker hace
+// scraping de sus páginas HTML y nos devuelve JSON ya normalizado con esta
+// forma:
+//
+// Programa:  { id, type:"program", title, author, url, image, isOriginal }
+// Episodio:  { id, type:"episode", title, program, url, image, isOriginal,
+//              isExclusive, duration, date, downloadUrl }
+//
+// downloadUrl es null cuando el episodio es exclusivo (no descargable).
+
+import { getJson } from "./proxy.js";
+
+export async function search(query, type, { signal } = {}) {
+  const q = encodeURIComponent(query.trim());
+  const data = await getJson(`/ivoox/search?q=${q}&type=${type}`, { signal });
+  return data.results || [];
+}
+
+export async function getProgram(programUrl, { signal } = {}) {
+  const u = encodeURIComponent(programUrl);
+  const data = await getJson(`/ivoox/program?url=${u}`, { signal });
+  return {
+    info: data.info,
+    episodes: data.episodes || [],
+  };
+}
+
+/** URL (a través del Worker) desde la que descargar el audio en crudo. */
+export function audioProxyUrl(proxyBaseUrl, episodeUrl) {
+  return `${proxyBaseUrl}/ivoox/audio?url=${encodeURIComponent(episodeUrl)}`;
+}
