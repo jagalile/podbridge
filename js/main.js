@@ -124,8 +124,8 @@ const RELAY_SLEEP_THRESHOLD_MS = 3000;
 async function checkRelay() {
   if (!state.settings.relayUrl) { setRelayStatus("unknown"); return; }
   setRelayStatus("checking");
-  const { ok, ms } = await pingRelay(state.settings.relayUrl);
-  setRelayStatus(ok ? "ok" : "error", { wasSleeping: ms >= RELAY_SLEEP_THRESHOLD_MS });
+  const { ok, ms, reason } = await pingRelay(state.settings.relayUrl);
+  setRelayStatus(ok ? "ok" : "error", { wasSleeping: ms >= RELAY_SLEEP_THRESHOLD_MS, failReason: reason || null });
 }
 checkRelay();
 
@@ -615,7 +615,11 @@ function computeConnectionDetails() {
   else if (r.status === "checking" || r.status === "unknown") relay = { dot: "connecting", text: "Comprobando conexión…" };
   else if (r.status === "ok" && r.wasSleeping) relay = { dot: "connected", text: "Activo (estaba dormido, ya despierto)" };
   else if (r.status === "ok") relay = { dot: "connected", text: "Activo" };
-  else relay = { dot: "error", text: "No responde en esa URL" };
+  // Un fallo real se distingue en tres casos — si no, todos se verían
+  // igual de "no responde" sin dar ninguna pista de qué mirar:
+  else if (r.failReason === "timeout") relay = { dot: "error", text: "No responde tras esperar 1 min — puede seguir dormido o estar caído, prueba otra vez en un rato" };
+  else if (r.failReason === "http") relay = { dot: "error", text: "Está despierto pero responde con error — revisa el despliegue en Render" };
+  else relay = { dot: "error", text: "No se ha podido contactar — revisa la URL o tu conexión" };
 
   return { worker, pocket, relay };
 }

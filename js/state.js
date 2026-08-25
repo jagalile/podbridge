@@ -52,6 +52,7 @@ export const state = {
     // servicio estaba dormido (plan gratuito de Render) y este ping lo
     // acaba de despertar — ver checkRelay() en main.js.
     wasSleeping: false,
+    failReason: null, // "timeout" | "network" | "http" | null — solo si status es "error", ver pingRelay()
   },
   pocketcasts: {
     email: sessionStorage.getItem("pb.pc.email") || "",
@@ -135,9 +136,10 @@ export function setWorkerStatus(status) {
   notify();
 }
 
-export function setRelayStatus(status, { wasSleeping = false } = {}) {
+export function setRelayStatus(status, { wasSleeping = false, failReason = null } = {}) {
   state.relay.status = status;
   state.relay.wasSleeping = wasSleeping;
+  state.relay.failReason = failReason; // "timeout" | "network" | "http" | null — ver pingRelay()
   notify();
 }
 

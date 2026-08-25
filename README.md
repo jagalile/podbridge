@@ -89,9 +89,14 @@ ninguna de las dos.
 - Indicador de estado combinado en la cabecera: al pasar el ratón o
   pulsarlo se ve el detalle del Worker, de Pocket Casts y del servicio de
   relevo por separado (si lo tienes configurado) — de un vistazo sabes
-  cuál de los tres falla si algo no funciona. El del relevo distingue
-  además "activo" de "estaba dormido, ya despierto" (plan gratuito de
-  Render), para que un arranque en frío no parezca un error.
+  cuál de los tres falla si algo no funciona. El del relevo distingue,
+  cuando no responde, si ha sido justo tras esperar el minuto entero
+  (puede seguir dormido o estar caído de verdad — no hay forma de
+  saberlo sin reintentar), si ha respondido pero con error (está
+  despierto, algo va mal en el propio servicio) o si ni siquiera se ha
+  podido contactar (URL mal puesta, DNS, sin conexión) — y "activo" de
+  "estaba dormido, ya despierto" cuando sí responde, para que un
+  arranque en frío del plan gratuito de Render no parezca un error.
 
 **Favoritos e historial**
 - Marca programas como favoritos con un toque (desde la tarjeta de
