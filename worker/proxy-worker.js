@@ -694,6 +694,32 @@ function bytesToHex(bytes) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Copia un ReadableStream a un WritableStream a mano, chunk a chunk,
+ * esperando explícitamente a que cada `write()` se resuelva antes de leer
+ * el siguiente. Es literalmente lo que `readable.pipeTo(writable)` debería
+ * hacer, pero en el runtime de Workers encadenar streams así con pipeTo()
+ * no propaga bien la contrapresión y puede acabar acumulando en memoria
+ * más de lo que el límite de 128 MB por invocación permite en ficheros
+ * grandes (ver el comentario en handlePocketCastsUploadEpisode). No se
+ * espera a que termine — corre en paralelo al fetch que consume el otro
+ * extremo del stream.
+ */
+async function pumpWithBackpressure(readable, writable) {
+  const reader = readable.getReader();
+  const writer = writable.getWriter();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      await writer.write(value);
+    }
+    await writer.close();
+  } catch (err) {
+    await writer.abort(err).catch(() => {});
+  }
+}
+
+/**
  * Sube el audio de un episodio a Archivos de Pocket Casts descargándolo de
  * iVoox y subiéndolo del todo en el propio Worker, de servidor a servidor
  * — el navegador solo manda esta petición pequeña (url, título) y nunca
@@ -769,29 +795,38 @@ async function handlePocketCastsUploadEpisode(request, env) {
   }
 
   // El audio se retransmite en streaming directo de iVoox a S3: nunca pasa
-  // por memoria como un buffer completo, ni por el navegador.
-  //
-  // Dos escollos, no uno, hacía falta resolver aquí:
+  // por memoria como un buffer completo, ni por el navegador. Por el
+  // camino hicieron falta tres ajustes, no uno, para que esto funcione de
+  // verdad con episodios grandes (~260-270 MB):
   //
   //   1. Pasar audioRes.body TAL CUAL como body de este segundo fetch
   //      (encadenar directamente el readable de una respuesta como
-  //      request de otra) provoca un 413 al azar en ficheros grandes en
-  //      el runtime de Workers — comprobado en la práctica con episodios
-  //      de ~260-270 MB.
-  //   2. Intercalar un TransformStream normal en medio arregla el 413,
-  //      pero el runtime de Workers manda un body de longitud
-  //      desconocida como "Transfer-Encoding: chunked" en cuanto el body
-  //      es un stream — y las URLs pre-firmadas de S3 (que es lo que hay
-  //      detrás de Pocket Casts) no soportan chunked en absoluto: lo
-  //      rechazan con un 501 "Not Implemented", aunque se mande también
-  //      la cabecera Content-Length a mano.
-  //
-  // FixedLengthStream es justo la pieza que faltaba: es un
-  // TransformStream especializado al que se le dice de antemano cuántos
-  // bytes va a pasar, y el runtime usa ese número como Content-Length real
-  // en vez de recurrir a chunked — con eso sí lo acepta S3.
+  //      request de otra) provoca un 413 al azar en ficheros grandes.
+  //   2. Intercalar un TransformStream normal en medio arregla ese 413,
+  //      pero el runtime manda entonces el body como
+  //      "Transfer-Encoding: chunked" en cuanto es un stream de longitud
+  //      desconocida — y las URLs pre-firmadas de S3 (lo que hay detrás
+  //      de Pocket Casts) no soportan chunked: lo rechazan con un 501.
+  //      FixedLengthStream (declarar de antemano cuántos bytes van a
+  //      pasar) arregla esto forzando un Content-Length real.
+  //   3. Con eso arreglado, `.pipeTo()` para conectar el readable de
+  //      iVoox con el writable de FixedLengthStream sigue rompiendo con
+  //      ficheros grandes — no con un error HTTP limpio, sino tirando
+  //      la conexión entera a medias (se ve en el navegador como un
+  //      "Failed to fetch"/CORS espurio, porque nunca llega a haber una
+  //      respuesta real que traiga cabeceras). La causa: el runtime de
+  //      Workers no propaga bien la contrapresión (backpressure) al
+  //      encadenar streams con pipeTo(), así que el Worker sigue leyendo
+  //      de iVoox más rápido de lo que consigue escribir hacia Pocket
+  //      Casts y acumula el sobrante en memoria — con el límite de
+  //      128 MB por invocación que tiene cualquier Worker, un episodio de
+  //      250+ MB revienta esa memoria y el runtime mata la petición en
+  //      seco. La solución es no usar pipeTo(): bombear los chunks a mano
+  //      con un bucle que SÍ espera (`await writer.write(chunk)`) a que
+  //      el lado de escritura esté listo antes de pedir el siguiente,
+  //      igual que pipeTo() debería hacer pero aquí no lo hace bien.
   const { readable, writable } = new FixedLengthStream(size);
-  audioRes.body.pipeTo(writable).catch(() => {}); // el fetch de abajo ya reporta el error si esto se rompe
+  pumpWithBackpressure(audioRes.body, writable); // sin esperar: corre en paralelo al fetch de abajo
 
   const putRes = await fetch(presignedUrl, {
     method: "PUT",

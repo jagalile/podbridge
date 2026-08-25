@@ -303,8 +303,9 @@ obvias que se probaron antes y que fallan con episodios largos (~5h,
 Haciendo la descarga+subida del todo dentro del Worker se evita el primer
 límite (que solo aplica a lo que el Worker *recibe*, no a las peticiones
 que él mismo hace hacia fuera) y el problema de CORS no existe entre
-servidores. Quedaban dos detalles nada evidentes por resolver dentro de
-esto:
+servidores. Quedaban tres detalles nada evidentes por resolver dentro de
+esto, cada uno descubierto al chocar con el siguiente episodio de prueba
+grande (~260-270 MB):
 
 - Encadenar directamente el cuerpo de la respuesta de iVoox como cuerpo
   de la petición a Pocket Casts (`body: audioRes.body`) provoca un 413
@@ -314,15 +315,28 @@ esto:
   `Transfer-Encoding: chunked` en cuanto es un stream de longitud
   desconocida — y las URLs pre-firmadas de S3 (que es lo que hay detrás
   de Pocket Casts) no soportan chunked, lo rechazan con un 501.
+  `FixedLengthStream` (un `TransformStream` al que se le dice de
+  antemano cuántos bytes va a dejar pasar) arregla esto: el runtime lo
+  usa como `Content-Length` real en vez de recurrir a chunked.
+- Con eso arreglado, conectar el readable de iVoox con el writable de
+  `FixedLengthStream` mediante `.pipeTo()` (la forma "normal" de unir dos
+  streams) seguía rompiendo con ficheros grandes — no con un error HTTP
+  limpio, sino tirando la conexión entera a medias, algo que en el
+  navegador se ve como un CORS/`Failed to fetch` espurio porque nunca
+  llega a haber una respuesta real. La causa es que el runtime de
+  Workers no propaga bien la contrapresión al encadenar streams con
+  `pipeTo()`: el Worker sigue leyendo de iVoox más rápido de lo que
+  consigue escribir hacia Pocket Casts y acumula el sobrante en memoria,
+  y con el límite de 128 MB por invocación que tiene cualquier Worker,
+  un episodio de 250+ MB la revienta. La solución es bombear los chunks
+  a mano en un bucle que sí espera a que cada escritura se resuelva
+  antes de pedir el siguiente, en vez de fiarse de `pipeTo()`.
 
-La pieza que faltaba es `FixedLengthStream`, una API propia de Workers: un
-`TransformStream` al que se le dice de antemano cuántos bytes va a dejar
-pasar, y que el runtime usa entonces como `Content-Length` real en vez de
-recurrir a chunked. La contrapartida de todo este diseño es que el
-navegador ya no puede pintar un progreso real en bytes durante esta fase
-(es una única petición de principio a fin): la UI la muestra como
-indeterminada en vez de fingir un porcentaje. La portada, que siempre es
-pequeña, sigue subiendo desde el navegador con progreso real.
+La contrapartida de todo este diseño es que el navegador ya no puede
+pintar un progreso real en bytes durante esta fase (es una única
+petición de principio a fin): la UI la muestra como indeterminada en vez
+de fingir un porcentaje. La portada, que siempre es pequeña, sigue
+subiendo desde el navegador con progreso real.
 
 Como ninguna de las dos es una API pública documentada, **pueden cambiar
 sin aviso**. Si algo deja de funcionar (títulos raros, episodios que no
