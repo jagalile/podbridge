@@ -711,30 +711,53 @@ function bytesToHex(bytes) {
 // ---------------------------------------------------------------------------
 
 /**
- * Copia un ReadableStream a un WritableStream a mano, chunk a chunk,
- * esperando explícitamente a que cada `write()` se resuelva antes de leer
- * el siguiente. Es literalmente lo que `readable.pipeTo(writable)` debería
- * hacer, pero en el runtime de Workers encadenar streams así con pipeTo()
- * no propaga bien la contrapresión y puede acabar acumulando en memoria
- * más de lo que el límite de 128 MB por invocación permite en ficheros
- * grandes (ver el comentario en handlePocketCastsUploadEpisode). No se
- * espera a que termine — corre en paralelo al fetch que consume el otro
- * extremo del stream.
+ * Copia un ReadableStream a un WritableStream a mano, agrupando los
+ * trozos pequeños que van llegando (normalmente ~64 KB cada uno) en
+ * bloques mayores antes de escribir, y esperando explícitamente a que
+ * cada `write()` se resuelva antes de seguir leyendo. Dos motivos para
+ * esto en vez de escribir cada trozo tal cual llega:
+ *
+ *   - Es lo que `readable.pipeTo(writable)` debería hacer, pero en el
+ *     runtime de Workers encadenar streams así con pipeTo() no propaga
+ *     bien la contrapresión y puede acumular en memoria más de lo que
+ *     permite el límite de 128 MB por invocación en ficheros grandes.
+ *   - En la práctica (comprobado con `wrangler tail`), escribir muchos
+ *     trozos pequeños seguidos hacía que el PUT hacia Pocket Casts se
+ *     cortase siempre en el mismo punto, a los pocos cientos de KB, con
+ *     "Network connection lost" — agrupar en bloques de varios MB reduce
+ *     drásticamente cuántas idas y vueltas hacen falta para todo el
+ *     fichero, por si el corte estaba relacionado con esa cadencia.
+ *
+ * No se espera a que termine — corre en paralelo al fetch que consume el
+ * otro extremo del stream.
  */
-async function pumpWithBackpressure(readable, writable, { label = "" } = {}) {
+async function pumpWithBackpressure(readable, writable, { label = "", batchBytes = 4 * 1024 * 1024 } = {}) {
   const reader = readable.getReader();
   const writer = writable.getWriter();
   let bytes = 0;
   let lastLoggedMb = 0;
+  let batch = [];
+  let batchSize = 0;
+
+  const flush = async () => {
+    if (!batchSize) return;
+    const chunk = batch.length === 1 ? batch[0] : concatBytes(...batch);
+    await writer.write(chunk);
+    batch = [];
+    batchSize = 0;
+  };
+
   try {
     for (;;) {
       const { done, value } = await reader.read();
+      if (!done) {
+        batch.push(value);
+        batchSize += value.byteLength;
+        bytes += value.byteLength;
+      }
+      if (batchSize >= batchBytes || (done && batchSize)) await flush();
       if (done) break;
-      await writer.write(value);
-      bytes += value.byteLength;
-      // Sin esto, un fallo a mitad de camino solo dice "se rompió", no
-      // por dónde — con episodios de cientos de MB eso es la diferencia
-      // entre depurar a ciegas y saber exactamente qué punto investigar.
+
       const mb = Math.floor(bytes / (5 * 1024 * 1024));
       if (mb > lastLoggedMb) {
         lastLoggedMb = mb;

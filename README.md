@@ -346,13 +346,22 @@ subiendo desde el navegador con progreso real.
 
 **Estado actual: sin resolver del todo.** Con episodios de varias horas
 (~250-280 MB), la subida automática de servidor a servidor sigue
-fallando en la práctica incluso después de los tres ajustes de streaming
-de arriba — el último diagnóstico en producción (con `wrangler tail`)
-muestra el PUT hacia Pocket Casts cortándose con un "Network connection
-lost" a los pocos cientos de KB, sin que quede claro todavía si es un
-límite duro del runtime de Workers para peticiones salientes largas, algo
-específico de la conexión con el almacenamiento de Pocket Casts, o algo
-que aún se puede arreglar por streaming. Se sigue investigando.
+fallando en la práctica incluso después de varios ajustes de streaming
+(TransformStream, FixedLengthStream, bombeo manual respetando
+contrapresión) — el diagnóstico en producción (con `wrangler tail`,
+confirmado en dos intentos distintos) muestra el `PUT` hacia Pocket Casts
+cortándose con un "Network connection lost" siempre en el mismo punto,
+a los ~0.6 MB, algo demasiado repetible para ser una simple red
+inestable. El diagnóstico también confirmó que el problema está en la
+subida hacia Pocket Casts y no en la descarga desde iVoox: el botón de
+descarga manual (mismo código de descarga dentro del Worker) trae
+episodios de 280 MB sin ningún problema. Último intento probado: agrupar
+los trozos pequeños que van llegando de iVoox en bloques de varios MB
+antes de escribir hacia Pocket Casts, por si el corte tenía que ver con
+la cadencia de escrituras pequeñas y frecuentes. Sin confirmar todavía si
+esto lo arregla — si sigue fallando igual, el siguiente paso ya no es
+seguir ajustando el streaming dentro de Cloudflare Workers, sino mover
+esta subida en concreto fuera de Cloudflare.
 
 Mientras tanto, la lista de episodios enseña un botón adicional de
 **descargar mp3** (icono de flecha hacia abajo, junto al de información)
