@@ -801,7 +801,30 @@ async function handlePocketCastsUploadEpisode(request, env) {
     signal: AbortSignal.timeout(15 * 60 * 1000),
   });
   if (!putRes.ok) {
-    return errorResponse(`Falló la subida del audio al almacenamiento de Pocket Casts (${putRes.status})`, env, 502);
+    // Diagnóstico no sensible (nunca la URL pre-firmada ni nada del
+    // token): con tres intentos fallidos seguidos con errores distintos
+    // (413, 501, 413 de nuevo) para los mismos episodios grandes, hace
+    // falta ver qué contesta realmente el otro lado en vez de seguir
+    // adivinando — en concreto, si trae cabeceras típicas de S3
+    // (server, x-amz-request-id) la petición sí llegó al almacenamiento
+    // y lo rechazó él; si no trae ninguna, lo más probable es que
+    // Cloudflare la haya cortado antes de salir de su red.
+    const bodyText = await putRes.text().catch(() => "");
+    return json(
+      {
+        error: `Falló la subida del audio al almacenamiento de Pocket Casts (${putRes.status})`,
+        debug: {
+          status: putRes.status,
+          server: putRes.headers.get("server"),
+          amzRequestId: putRes.headers.get("x-amz-request-id"),
+          cfRay: putRes.headers.get("cf-ray"),
+          contentType: putRes.headers.get("content-type"),
+          bodySnippet: bodyText.slice(0, 400),
+        },
+      },
+      env,
+      502,
+    );
   }
 
   return json({ ok: true, uuid: id, title }, env);

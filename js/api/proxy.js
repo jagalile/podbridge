@@ -11,10 +11,11 @@ export class ProxyNotConfiguredError extends Error {
 }
 
 export class ProxyRequestError extends Error {
-  constructor(message, status) {
+  constructor(message, status, debug) {
     super(message);
     this.name = "ProxyRequestError";
     this.status = status;
+    this.debug = debug;
   }
 }
 
@@ -34,11 +35,18 @@ async function request(path, { method = "GET", body, headers = {}, signal } = {}
 
   if (!res.ok) {
     let message = `El Worker respondió ${res.status}`;
+    let debug;
     try {
       const data = await res.json();
       if (data?.error) message = data.error;
+      debug = data?.debug;
     } catch { /* respuesta no era JSON, nos quedamos con el mensaje genérico */ }
-    throw new ProxyRequestError(message, res.status);
+    // El campo debug (cuando lo hay) nunca lleva nada sensible — solo
+    // cabeceras/estado de diagnóstico — pero sí puede ser la única pista
+    // real de qué ha pasado, así que se deja en la consola en vez de
+    // perderse silenciosamente.
+    if (debug) console.warn(`PodBridge: ${path} falló`, debug);
+    throw new ProxyRequestError(message, res.status, debug);
   }
   return res;
 }
