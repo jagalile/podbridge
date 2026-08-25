@@ -10,7 +10,7 @@ import { pingWorker } from "./api/proxy.js";
 import { pingRelay } from "./api/relay.js";
 import { runEpisodeJob } from "./download.js";
 import { toast } from "./components/toast.js";
-import { skeletonGrid, idleState, emptyState, emptyFavoritesState, errorState, proxyMissingState } from "./components/states.js";
+import { skeletonGrid, skeletonList, idleState, emptyState, emptyFavoritesState, errorState, proxyMissingState } from "./components/states.js";
 import { renderProgramCard, renderEpisodeCard, renderEpisodeRow, applyJobState, actionButton } from "./components/cards.js";
 import { openOverlay, closeOverlay } from "./components/overlay.js";
 import { openEpisodeModal } from "./components/episodeModal.js";
@@ -24,6 +24,7 @@ const programViewEl = $("#program-view");
 const programHeaderEl = $("#program-header");
 const programEpisodesEl = $("#program-episodes");
 const episodeFilterEl = $("#program-episode-filter");
+const episodeSearchWrapEl = $(".program-episode-search");
 
 // ---------------------------------------------------------------------------
 // Settings panel
@@ -477,7 +478,12 @@ function renderProgram() {
   programHeaderEl.innerHTML = "";
   if (info) {
     const badge = info.isOriginal ? `<span class="tag-original">iVoox Originals</span>` : "";
-    const description = (info.description || "").trim();
+    // Antes de que responda /ivoox/program, `info` es solo la tarjeta de
+    // búsqueda/favorito que ya teníamos (sin `description`, esa solo
+    // llega con la ficha completa) — usar `author` como texto provisional
+    // evita que la descripción tarde en aparecer pudiendo mostrar algo
+    // desde el primer render en vez de esperar a la respuesta completa.
+    const description = (info.description || info.author || "").trim();
     const fav = isFavorite(info.id);
     programHeaderEl.innerHTML = `
       <img src="${info.image || ""}" alt="" onerror="this.style.visibility='hidden'" />
@@ -520,8 +526,11 @@ function renderProgram() {
     }
   }
 
-  episodeFilterEl.hidden = status !== "success";
-  if (status === "loading") return skeletonGrid(programEpisodesEl, 5);
+  // Se esconde el buscador entero (input + icono de lupa), no solo el
+  // input — escondiendo solo el input, el icono se quedaba flotando
+  // solo mientras cargaba, sin nada de caja alrededor.
+  episodeSearchWrapEl.hidden = status !== "success";
+  if (status === "loading") return skeletonList(programEpisodesEl, 5);
   if (status === "error") return errorState(programEpisodesEl, error, () => openProgram(state.program.info));
   if (status === "empty") return emptyState(programEpisodesEl, info?.title || "");
 

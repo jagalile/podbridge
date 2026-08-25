@@ -10,6 +10,18 @@ export function skeletonGrid(container, count = 8) {
   container.appendChild(grid);
 }
 
+/** Como skeletonGrid(), pero con la forma de una fila de episodio
+ * (tpl-episode-row) en vez de una tarjeta — para listas verticales como
+ * los episodios de un programa, donde el esqueleto de tarjeta se nota
+ * mucho al cambiar de tamaño en cuanto cargan los episodios de verdad. */
+export function skeletonList(container, count = 5) {
+  container.innerHTML = "";
+  const list = document.createElement("div");
+  list.className = "episode-list";
+  for (let i = 0; i < count; i++) list.appendChild(clone("tpl-skeleton-row"));
+  container.appendChild(list);
+}
+
 function stateBlock(container, { icon, title, text, tone, actionLabel, onAction }) {
   container.innerHTML = "";
   const block = document.createElement("div");

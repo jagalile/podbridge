@@ -310,6 +310,20 @@
     </div>
   </template>
 
+  <!-- Misma forma que tpl-episode-row (portada pequeña + dos líneas de
+       texto al lado) — usar el esqueleto de tarjeta (tpl-skeleton-card,
+       vertical, portada cuadrada grande) aquí se notaba mucho al
+       cambiar de tamaño en cuanto cargaban los episodios de verdad. -->
+  <template id="tpl-skeleton-row">
+    <div class="skeleton-row" aria-hidden="true">
+      <div class="skeleton skeleton-row-cover"></div>
+      <div class="skeleton-row-lines">
+        <div class="skeleton skeleton-line" style="width:70%"></div>
+        <div class="skeleton skeleton-line" style="width:40%"></div>
+      </div>
+    </div>
+  </template>
+
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
