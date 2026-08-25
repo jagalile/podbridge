@@ -23,27 +23,30 @@ export async function getUsage(token) {
 }
 
 /**
- * Sube un episodio a Archivos de Pocket Casts.
+ * Sube un episodio a Archivos de Pocket Casts, de servidor a servidor: el
+ * propio Worker lo descarga de iVoox y lo sube, este fetch solo manda la
+ * URL del episodio y el título — nunca el audio en sí.
  *
- * El fichero se envía como cuerpo crudo de la petición (no multipart/
- * FormData): así el Worker puede retransmitirlo a Pocket Casts en
- * streaming, sin tener que cargar el episodio entero en memoria — con
- * FormData no hay más remedio que bufferizarlo, y para episodios largos
- * (varias horas) eso podía agotar la memoria del Worker y dejar la subida
- * colgada sin avisar.
+ * No es una elección de diseño arbitraria: Cloudflare Workers tiene un
+ * límite de 100 MB en el cuerpo de las peticiones que RECIBE (ver README
+ * → "Cómo funciona el Worker por dentro"), así que reenviar el audio ya
+ * descargado desde el navegador no podía funcionar con episodios largos
+ * (uno de ~5h ronda los 260-300 MB). Al no pasar por el navegador,
+ * tampoco hay progreso en bytes real que mostrar durante esta fase — se
+ * trata como indeterminada en la UI (ver download.js).
  *
- * @param {Blob} fileBlob audio ya descargado
- * @param {{title:string, contentType:string, hasImage?:boolean}} meta
+ * @param {string} episodeUrl
+ * @param {{title:string, hasImage?:boolean}} meta
  * @param {string} token
- * @param {(progress:number)=>void} onProgress 0..1, solo durante la subida
  * @param {AbortSignal} [signal] para poder cancelar (botón de la UI, o el vigilante de atascos)
  * @returns {Promise<{uuid:string, title:string}>}
  */
-export async function uploadFile(fileBlob, meta, token, onProgress, signal) {
-  const contentType = meta.contentType || "audio/mpeg";
-  const params = { title: meta.title, contentType };
-  if (meta.hasImage) params.hasImage = "1";
-  return xhrUpload("/pocketcasts/upload", params, fileBlob, contentType, token, onProgress, signal);
+export async function uploadEpisodeFromIvoox(episodeUrl, meta, token, signal) {
+  return postJson(
+    "/pocketcasts/upload-episode",
+    { episodeUrl, title: meta.title, hasImage: !!meta.hasImage },
+    { headers: { Authorization: `Bearer ${token}` }, signal },
+  );
 }
 
 /**

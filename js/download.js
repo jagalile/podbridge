@@ -1,28 +1,39 @@
-// Orquesta el flujo completo por episodio: descarga el audio (y su
-// portada, si tiene) desde iVoox a través del Worker → sube ambos a
-// Archivos de Pocket Casts. Todo queda reflejado en el store (jobs) para
-// que la UI reaccione.
+// Orquesta el flujo completo por episodio. El audio ya NO pasa por el
+// navegador: el propio Worker lo descarga de iVoox y lo sube a Pocket
+// Casts de servidor a servidor (ver uploadEpisodeFromIvoox) — Cloudflare
+// Workers limita a 100 MB el cuerpo de las peticiones que RECIBE, así que
+// reenviar un audio ya descargado (un episodio de ~5h ronda los 260-300
+// MB) no podía funcionar. Solo la portada, que siempre es pequeña, se
+// sigue descargando al navegador y subiendo desde aquí.
 //
-// Cada job tiene su propio AbortController y se vigila su actividad: si
-// pasa demasiado tiempo sin que llegue ni un solo byte nuevo (no un
-// límite de duración total, que penalizaría episodios grandes que van
-// bien pero despacio), se cancela solo y queda en error listo para
-// reintentar — antes un atasco de red se quedaba colgado para siempre
-// sin ninguna forma de recuperarlo salvo recargar la página entera.
+// Todo queda reflejado en el store (jobs) para que la UI reaccione. Cada
+// job tiene su propio AbortController y se vigila su actividad: si pasa
+// demasiado tiempo sin ninguna señal de vida, se cancela solo y queda en
+// error listo para reintentar — antes un atasco de red se quedaba
+// colgado para siempre sin ninguna forma de recuperarlo salvo recargar
+// la página entera.
 
 import { state, setJob } from "./state.js";
-import { audioProxyUrl, imageProxyUrl } from "./api/ivoox.js";
-import { uploadFile, uploadImage } from "./api/pocketcasts.js";
+import { imageProxyUrl } from "./api/ivoox.js";
+import { uploadEpisodeFromIvoox, uploadImage } from "./api/pocketcasts.js";
 import { uuid } from "./utils.js";
 
 // Reparto del progreso 0..1 mostrado en la UI según haya o no portada que
-// subir (la portada es opcional y no debe hacer más lento el caso normal).
-const WEIGHTS_WITH_IMAGE = { downloadAudio: 0.35, downloadImage: 0.1, uploadAudio: 0.4, uploadImage: 0.15 };
-const WEIGHTS_NO_IMAGE = { downloadAudio: 0.5, downloadImage: 0, uploadAudio: 0.5, uploadImage: 0 };
+// subir. La fase "uploadEpisode" (descarga+subida dentro del Worker) es
+// una única petición sin progreso en bytes real, así que se muestra como
+// indeterminada en vez de fingir un porcentaje que no se corresponde con
+// nada — ver job.indeterminate en cards.js.
+const WEIGHTS_WITH_IMAGE = { downloadImage: 0.15, uploadEpisode: 0.7, uploadImage: 0.15 };
+const WEIGHTS_NO_IMAGE = { downloadImage: 0, uploadEpisode: 1, uploadImage: 0 };
 
 const STALL_TIMEOUT_MS = 45_000;
+// Mientras dura la fase indeterminada no hay progreso real que reportar,
+// así que se manda un "aún sigo aquí" cada pocos segundos para que el
+// vigilante de atascos no la confunda con un job realmente muerto.
+const HEARTBEAT_MS = 10_000;
+
 const controllers = new Map(); // episodeId -> AbortController
-const lastActivity = new Map(); // episodeId -> timestamp del último progreso real
+const lastActivity = new Map(); // episodeId -> timestamp de la última señal de vida
 
 /** Cancela un job en marcha (botón de la UI, o el propio vigilante de atascos). */
 export function cancelJob(id, message = "Cancelado.") {
@@ -31,7 +42,7 @@ export function cancelJob(id, message = "Cancelado.") {
   controller.abort(new DOMException(message, "AbortError"));
 }
 
-// Cada pocos segundos se revisa si algún job lleva demasiado sin progresar.
+// Cada pocos segundos se revisa si algún job lleva demasiado sin dar señales de vida.
 setInterval(() => {
   const now = Date.now();
   for (const [id, since] of lastActivity) {
@@ -75,13 +86,7 @@ export async function runEpisodeJob(episode) {
     // para que el indicador global de descargas/subidas en curso pueda
     // enseñarlo aunque el usuario navegue a otra búsqueda u otro programa
     // mientras tanto y el episodio deje de estar en las listas cargadas.
-    setJob(id, { status: "downloading", progress: 0, error: "", title: episode.title });
-    const audioBlob = await downloadBinary(
-      audioProxyUrl(state.settings.proxyUrl, episode.downloadUrl),
-      (p) => { touch(); setJob(id, { progress: base + p * w.downloadAudio }); },
-      signal,
-    );
-    base += w.downloadAudio;
+    setJob(id, { status: "downloading", progress: 0, error: "", title: episode.title, indeterminate: false });
 
     // La portada es un extra: si falla su descarga, seguimos sin ella en
     // vez de tirar toda la subida por la borda.
@@ -99,18 +104,23 @@ export async function runEpisodeJob(episode) {
       base += w.downloadImage;
     }
 
-    setJob(id, { status: "uploading", progress: base });
-    const result = await uploadFile(
-      audioBlob,
-      { title: episode.title, contentType: audioBlob.type || "audio/mpeg", hasImage: !!imageBlob },
-      state.pocketcasts.token,
-      (p) => { touch(); setJob(id, { progress: base + p * w.uploadAudio }); },
-      signal,
-    );
-    base += w.uploadAudio;
+    setJob(id, { status: "uploading", progress: base, indeterminate: true });
+    const heartbeat = setInterval(touch, HEARTBEAT_MS);
+    let result;
+    try {
+      result = await uploadEpisodeFromIvoox(
+        episode.downloadUrl,
+        { title: episode.title, hasImage: !!imageBlob },
+        state.pocketcasts.token,
+        signal,
+      );
+    } finally {
+      clearInterval(heartbeat);
+    }
+    base += w.uploadEpisode;
+    setJob(id, { progress: base, indeterminate: false });
 
     if (imageBlob) {
-      setJob(id, { progress: base });
       try {
         await uploadImage(
           imageBlob,
@@ -124,12 +134,12 @@ export async function runEpisodeJob(episode) {
       }
     }
 
-    setJob(id, { status: "done", progress: 1 });
+    setJob(id, { status: "done", progress: 1, indeterminate: false });
   } catch (err) {
     const message = signal.aborted
       ? (signal.reason?.message || "Cancelado.")
       : (err.message || "Ha fallado la descarga o la subida.");
-    setJob(id, { status: "error", error: message });
+    setJob(id, { status: "error", error: message, indeterminate: false });
   } finally {
     controllers.delete(id);
     lastActivity.delete(id);

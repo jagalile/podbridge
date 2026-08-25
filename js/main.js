@@ -640,12 +640,20 @@ function renderActiveJobs() {
   listEl.innerHTML = active
     .map(([id, job]) => {
       const pct = Math.round((job.progress || 0) * 100);
-      const statusText = job.status === "downloading" ? `Descargando… ${pct}%` : `Subiendo… ${pct}%`;
+      // La fase de subida real no tiene progreso en bytes (pasa entera
+      // por el Worker, de iVoox a Pocket Casts) — se muestra como tal en
+      // vez de fingir un porcentaje que no significa nada.
+      const statusText = job.indeterminate
+        ? "Subiendo el audio…"
+        : job.status === "downloading" ? `Descargando… ${pct}%` : `Subiendo… ${pct}%`;
+      const barFill = job.indeterminate
+        ? `<div class="job-row-bar-fill is-indeterminate"></div>`
+        : `<div class="job-row-bar-fill" style="width:${pct}%"></div>`;
       return `
         <div class="job-row" data-episode-id="${id}">
           <p class="job-row-title">${escapeHtml(job.title || "Episodio")}</p>
           <p class="job-row-status">${statusText}</p>
-          <div class="job-row-bar"><div class="job-row-bar-fill" style="width:${pct}%"></div></div>
+          <div class="job-row-bar">${barFill}</div>
         </div>
       `;
     })

@@ -53,14 +53,13 @@ ninguna de las dos.
   identifican y quedan bloqueados: esta herramienta nunca los descarga.
 
 **Descarga y subida**
-- Un solo botón por episodio: descarga el audio de iVoox y lo sube a
-  Archivos de Pocket Casts, con barra de progreso real en cada fase.
+- Un solo botón por episodio: el Worker descarga el audio de iVoox y lo
+  sube a Archivos de Pocket Casts de servidor a servidor — el audio en sí
+  nunca pasa por tu navegador ni por tu conexión, así que episodios de
+  varias horas (cientos de MB) suben igual de bien que uno corto.
 - Sube también la portada del episodio como imagen personalizada del
   fichero en Pocket Casts (si falla, el episodio se sube igualmente, solo
   que sin portada propia).
-- Streaming de extremo a extremo: los ficheros de audio no se cargan
-  enteros en memoria en ningún punto, así que episodios largos (varias
-  horas) no deberían colgar la subida.
 - Se pueden lanzar varias descargas/subidas a la vez (no hay cola: cada
   episodio va por su cuenta) — un indicador en la cabecera muestra
   cuántas hay en curso y, al pasar el ratón o pulsarlo, el progreso
@@ -253,7 +252,7 @@ olvidar la sesión recordada en cualquier momento, basta con desactivarlo.
 | `GET /ivoox/raw?url=` | HTML crudo de una URL de iVoox, solo para depurar el scraper |
 | `POST /pocketcasts/login` | Login contra Pocket Casts, devuelve el token de sesión |
 | `GET /pocketcasts/usage` | Espacio usado/disponible en Archivos (bytes) |
-| `POST /pocketcasts/upload` | Sube el audio de un episodio a Archivos |
+| `POST /pocketcasts/upload-episode` | Descarga el audio de iVoox y lo sube a Archivos, del todo en el Worker |
 | `POST /pocketcasts/upload-image` | Sube la portada de un episodio ya subido |
 
 El tamaño de cada episodio que se ve en la lista sale de una petición
@@ -281,9 +280,22 @@ una URL de S3 pre-firmada donde subir el audio. Si el episodio tiene
 portada, hay un segundo paso independiente — `POST /files/upload/image`
 con el mismo `uuid` — que da otra URL pre-firmada para la imagen; si ese
 segundo paso falla no bloquea nada, el episodio se queda sin portada
-propia. Todo el audio y la imagen se retransmiten en **streaming** de
-principio a fin: nunca se bufferiza el fichero entero en memoria del
-Worker, ni siquiera con episodios de varias horas.
+propia.
+
+El audio en sí **no llega a pasar por el navegador**: `/pocketcasts/upload-episode`
+recibe solo la URL del episodio y el título (una petición pequeña), y es
+el propio Worker quien descarga el mp3 de iVoox y lo sube a Pocket Casts,
+retransmitiendo en streaming directo de un sitio a otro sin bufferizar
+nada en memoria. No es solo por eficiencia: **Cloudflare Workers limita a
+100 MB el cuerpo de las peticiones que el Worker recibe** (no las que hace
+él mismo hacia fuera), y un episodio de unas pocas horas ronda fácilmente
+los 200-300 MB — la primera versión, en la que el navegador descargaba el
+audio y se lo volvía a mandar al Worker para reenviarlo, se quedaba
+atascada sin más con cualquier episodio largo. La contrapartida es que
+esta fase no tiene progreso en bytes real que enseñar (es una única
+petición de principio a fin): la UI la muestra como indeterminada en vez
+de fingir un porcentaje. La portada, que siempre es pequeña, sigue
+subiendo desde el navegador con progreso real.
 
 Como ninguna de las dos es una API pública documentada, **pueden cambiar
 sin aviso**. Si algo deja de funcionar (títulos raros, episodios que no
@@ -325,6 +337,11 @@ aparecen, login o subida rotos), el sitio donde mirar es siempre
   tráfico.
 - **La subida de Archivos a Pocket Casts requiere una suscripción Pocket
   Casts Plus.** Sin ella, Pocket Casts rechaza la solicitud.
+- **Sin progreso en bytes durante la subida del audio.** Al hacerse
+  entera dentro del Worker (ver arriba), esa fase se muestra como
+  indeterminada en vez de un porcentaje — sí se cancela igual (a mano o
+  sola a los 45s sin señal de vida) y tiene un límite de seguridad de 15
+  minutos en el propio Worker.
 - **Persistencia solo local, sin sincronizar.** Favoritos, historial de
   subidas y la sesión recordada viven en `localStorage`/`IndexedDB` de
   este navegador — no se sincronizan entre dispositivos ni navegadores;
