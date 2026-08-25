@@ -694,41 +694,63 @@ function bytesToHex(bytes) {
 // ---------------------------------------------------------------------------
 
 /**
- * Pide a Pocket Casts una URL prefirmada para subir el audio de un episodio
- * a Archivos, y se la devuelve tal cual al navegador — es el propio
- * navegador quien hace después el PUT grande directamente contra esa URL,
- * sin pasar por este Worker. Así es como lo hace también la app oficial:
- * el dispositivo sube el fichero directo al almacenamiento, el backend de
- * Pocket Casts solo entrega la URL prefirmada.
+ * Sube el audio de un episodio a Archivos de Pocket Casts descargándolo de
+ * iVoox y subiéndolo del todo en el propio Worker, de servidor a servidor
+ * — el navegador solo manda esta petición pequeña (url, título) y nunca
+ * llega a ver el audio en sí.
  *
- * Una versión anterior de esto hacía el PUT del audio desde el propio
- * Worker (descargándolo de iVoox y subiéndolo él mismo, de servidor a
- * servidor) para evitar mandar el audio al Worker desde el navegador —
- * Cloudflare Workers limita a 100 MB el cuerpo de las peticiones que
- * RECIBE. Pero ese límite no es solo de entrada: también rechaza con 413
- * las peticiones grandes que el propio Worker hace hacia fuera (el PUT del
- * Worker a Pocket Casts), así que un episodio de varias horas (200-300 MB)
- * tampoco podía subirse así. La única forma de mover un fichero grande sin
- * tocar ese límite es que nunca pase por el Worker en ningún sentido: el
- * navegador descarga el audio de iVoox (vía /ivoox/audio, que sí puede
- * responder con cuerpos grandes sin problema — el límite es solo de
- * peticiones, no de respuestas) y lo sube directo a la URL prefirmada.
+ * Por qué de servidor a servidor y no lo obvio (navegador ↔ Pocket Casts
+ * directo, o navegador ↔ Worker ↔ Pocket Casts) — las dos alternativas se
+ * probaron primero y las dos fallan con episodios largos (~5h, 260-300 MB):
+ *
+ *   · Navegador descarga el audio y se lo reenvía al Worker: Cloudflare
+ *     Workers limita a 100 MB el cuerpo de las peticiones que RECIBE
+ *     (plan gratuito/Pro) — se atascaba justo al llegar a esa fase.
+ *   · Navegador sube directo a la URL prefirmada que da Pocket Casts (sin
+ *     pasar por el Worker, como hace la app oficial): bloqueado por CORS
+ *     — el almacenamiento de Pocket Casts no está pensado para que un
+ *     navegador le hable directamente, solo sus apps nativas (que no
+ *     tienen ese problema porque CORS es una restricción exclusiva de
+ *     navegadores).
+ *
+ * Haciendo la descarga+subida aquí dentro se evita el primer límite (que
+ * solo aplica a peticiones que el Worker RECIBE, no a las que él mismo
+ * hace hacia fuera) y el problema de CORS no existe entre servidores. La
+ * contrapartida es que el navegador ya no puede pintar un progreso real en
+ * bytes durante esta fase — es una única petición de principio a fin. La
+ * UI lo trata como una fase indeterminada (ver download.js).
  */
 async function handlePocketCastsUploadEpisode(request, env) {
   const authHeader = request.headers.get("Authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
   if (!token) return errorResponse("Falta el token de Pocket Casts", env, 401);
 
-  const { title, size, contentType, hasImage } = await request.json();
-  if (!size) return errorResponse("Falta el tamaño del audio", env, 400);
+  const { episodeUrl, title, hasImage } = await request.json();
+  if (!episodeUrl) return errorResponse("Falta la URL del episodio", env, 400);
+
+  const audioUrl = resolveAudioUrl(episodeUrl);
+  if (!audioUrl) {
+    return errorResponse(
+      "No se ha podido resolver el audio de este episodio (puede ser exclusivo o iVoox ha cambiado su web).",
+      env, 422,
+    );
+  }
+
+  const audioRes = await fetch(audioUrl, {
+    headers: { ...BROWSER_HEADERS, Referer: episodeUrl },
+    signal: AbortSignal.timeout(15 * 60 * 1000), // 15 min: de sobra incluso para un episodio muy largo en una conexión lenta
+  });
+  if (!audioRes.ok || !audioRes.body) {
+    return errorResponse(`iVoox respondió ${audioRes.status} al descargar el audio`, env, 502);
+  }
+
+  const size = Number(audioRes.headers.get("Content-Length") || 0);
+  const contentType = audioRes.headers.get("Content-Type") || "audio/mpeg";
+  if (!size) return errorResponse("iVoox no informó del tamaño del audio", env, 502);
 
   const id = crypto.randomUUID();
   const requestBody = encodeFileUploadRequest({
-    uuid: id,
-    title: title || "Episodio",
-    size,
-    contentType: contentType || "audio/mpeg",
-    hasImage: !!hasImage,
+    uuid: id, title: title || "Episodio", size, contentType, hasImage: !!hasImage,
   });
 
   const uploadReqRes = await fetch("https://api.pocketcasts.com/files/upload/request", {
@@ -746,7 +768,32 @@ async function handlePocketCastsUploadEpisode(request, env) {
     return errorResponse("Pocket Casts no devolvió una URL de subida válida", env, 502);
   }
 
-  return json({ ok: true, uuid: id, uploadUrl: presignedUrl, contentType: contentType || "audio/mpeg" }, env);
+  // El audio se retransmite en streaming directo de iVoox a S3: nunca pasa
+  // por memoria como un buffer completo, ni por el navegador.
+  //
+  // Importante: pasar audioRes.body TAL CUAL como body de este segundo
+  // fetch (encadenar directamente el readable de una respuesta como
+  // request de otra) provoca un 413 al azar en ficheros grandes en el
+  // runtime de Workers — comprobado en la práctica con episodios de
+  // ~260-270 MB. Intercalar un TransformStream de identidad en medio (que
+  // no hace nada más que reenviar cada chunk) lo evita: fuerza un
+  // streaming incremental real en vez de lo que sea que intente hacer el
+  // runtime al unir directamente dos cuerpos de fetch.
+  const { readable, writable } = new TransformStream();
+  audioRes.body.pipeTo(writable).catch(() => {}); // el fetch de abajo ya reporta el error si esto se rompe
+
+  const putRes = await fetch(presignedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType, "Content-Length": String(size) },
+    body: readable,
+    duplex: "half",
+    signal: AbortSignal.timeout(15 * 60 * 1000),
+  });
+  if (!putRes.ok) {
+    return errorResponse(`Falló la subida del audio al almacenamiento de Pocket Casts (${putRes.status})`, env, 502);
+  }
+
+  return json({ ok: true, uuid: id, title }, env);
 }
 
 /**

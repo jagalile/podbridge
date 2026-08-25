@@ -53,11 +53,10 @@ ninguna de las dos.
   identifican y quedan bloqueados: esta herramienta nunca los descarga.
 
 **Descarga y subida**
-- Un solo botón por episodio: el navegador descarga el audio de iVoox y lo
-  sube directo a Archivos de Pocket Casts — el Worker solo hace de puente
-  para los metadatos y las cabeceras CORS, nunca ve el audio en sí, así
-  que episodios de varias horas (cientos de MB) suben igual de bien que
-  uno corto, con progreso real en bytes de principio a fin.
+- Un solo botón por episodio: el Worker descarga el audio de iVoox y lo
+  sube a Archivos de Pocket Casts de servidor a servidor — el audio en sí
+  nunca pasa por tu navegador ni por tu conexión, así que episodios de
+  varias horas (cientos de MB) suben igual de bien que uno corto.
 - Sube también la portada del episodio como imagen personalizada del
   fichero en Pocket Casts (si falla, el episodio se sube igualmente, solo
   que sin portada propia).
@@ -253,7 +252,7 @@ olvidar la sesión recordada en cualquier momento, basta con desactivarlo.
 | `GET /ivoox/raw?url=` | HTML crudo de una URL de iVoox, solo para depurar el scraper |
 | `POST /pocketcasts/login` | Login contra Pocket Casts, devuelve el token de sesión |
 | `GET /pocketcasts/usage` | Espacio usado/disponible en Archivos (bytes) |
-| `POST /pocketcasts/upload-episode` | Pide a Pocket Casts una URL prefirmada para subir el audio de un episodio |
+| `POST /pocketcasts/upload-episode` | Descarga el audio de iVoox y lo sube a Archivos, del todo en el Worker |
 | `POST /pocketcasts/upload-image` | Sube la portada de un episodio ya subido |
 
 El tamaño de cada episodio que se ve en la lista sale de una petición
@@ -283,29 +282,36 @@ con el mismo `uuid` — que da otra URL pre-firmada para la imagen; si ese
 segundo paso falla no bloquea nada, el episodio se queda sin portada
 propia.
 
-El audio en sí **nunca pasa por el Worker, en ningún sentido**: el
-navegador lo descarga de iVoox a través de `/ivoox/audio` (el Worker solo
-le añade cabeceras CORS, sin tocar el cuerpo) y lo sube directo a la URL
-prefirmada que devuelve `/pocketcasts/upload-episode` — esa petición al
-Worker es minúscula, solo metadatos (título, tamaño, tipo). Es exactamente
-lo que hace también la app oficial: el dispositivo sube el fichero
-directo al almacenamiento, el backend de Pocket Casts solo entrega la URL
-prefirmada.
+El audio en sí **no llega a pasar por el navegador**: `/pocketcasts/upload-episode`
+recibe solo la URL del episodio y el título (una petición pequeña), y es
+el propio Worker quien descarga el mp3 de iVoox y lo sube a Pocket Casts,
+retransmitiendo en streaming directo de un sitio a otro sin bufferizar
+nada en memoria. Esto se decidió a base de descartar dos alternativas más
+obvias que se probaron antes y que fallan con episodios largos (~5h,
+260-300 MB):
 
-Esto no es un capricho: **Cloudflare Workers limita a 100 MB el cuerpo de
-cualquier petición HTTP en la que participa** — tanto las que recibe como,
-según se comprobó en la práctica, las que él mismo hace hacia fuera con
-`fetch()` — y un episodio de unas pocas horas ronda fácilmente los
-200-300 MB. Dos diseños anteriores tropezaron con esto por turnos: primero
-el navegador descargaba el audio y se lo volvía a mandar al Worker para
-que lo reenviara (fallaba al *recibirlo*, con la subida atascada siempre
-en el mismo punto); después se probó a que el propio Worker descargara de
-iVoox y subiera a Pocket Casts de servidor a servidor (fallaba igual al
-*mandarlo* él mismo, con un 413 de Pocket Casts). La única combinación que
-no tropieza con el límite en ningún punto es que el fichero grande nunca
-atraviese el Worker: solo entra y sale de él en forma de metadatos o de
-una respuesta en streaming, nunca como el cuerpo de una petición que el
-propio Worker envía o recibe.
+- **Navegador descarga y se lo reenvía al Worker para que lo suba.**
+  Cloudflare Workers limita a 100 MB el cuerpo de las peticiones que
+  RECIBE (plan gratuito/Pro) — se atascaba justo al llegar a esa fase.
+- **Navegador sube directo a la URL pre-firmada de Pocket Casts, sin
+  Worker de por medio** (que es justo lo que hace la app oficial: el
+  dispositivo sube el fichero directo al almacenamiento). Bloqueado por
+  CORS — ese almacenamiento no está pensado para que le hable un
+  navegador, solo las apps nativas, que no tienen ese problema porque
+  CORS es una restricción exclusiva de navegadores.
+
+Haciendo la descarga+subida del todo dentro del Worker se evita el primer
+límite (que solo aplica a lo que el Worker *recibe*, no a las peticiones
+que él mismo hace hacia fuera) y el problema de CORS no existe entre
+servidores. Un detalle no evidente: encadenar directamente el cuerpo de la
+respuesta de iVoox como cuerpo de la petición a Pocket Casts
+(`body: audioRes.body`) provoca un 413 aleatorio en ficheros grandes —
+hace falta intercalar un `TransformStream` de identidad en medio para que
+el streaming sea realmente incremental. La contrapartida de todo esto es
+que el navegador ya no puede pintar un progreso real en bytes durante esta
+fase (es una única petición de principio a fin): la UI la muestra como
+indeterminada en vez de fingir un porcentaje. La portada, que siempre es
+pequeña, sigue subiendo desde el navegador con progreso real.
 
 Como ninguna de las dos es una API pública documentada, **pueden cambiar
 sin aviso**. Si algo deja de funcionar (títulos raros, episodios que no
@@ -347,14 +353,11 @@ aparecen, login o subida rotos), el sitio donde mirar es siempre
   tráfico.
 - **La subida de Archivos a Pocket Casts requiere una suscripción Pocket
   Casts Plus.** Sin ella, Pocket Casts rechaza la solicitud.
-- **La subida del audio depende de que el almacenamiento de Pocket Casts
-  acepte peticiones directas del navegador.** Al subirse directo del
-  navegador a la URL prefirmada (ver arriba) en vez de a través del
-  Worker, hace falta que ese almacenamiento tenga CORS habilitado para
-  peticiones cruzadas — algo que no está documentado y podría cambiar sin
-  aviso. Si algún día deja de estarlo, la subida fallará con un error de
-  red justo al empezar (revisa la consola del navegador) en vez de con un
-  progreso a medias.
+- **Sin progreso en bytes durante la subida del audio.** Al hacerse
+  entera dentro del Worker (ver arriba), esa fase se muestra como
+  indeterminada en vez de un porcentaje — sí se cancela igual (a mano o
+  sola a los 45s sin señal de vida) y tiene un límite de seguridad de 15
+  minutos en el propio Worker.
 - **Persistencia solo local, sin sincronizar.** Favoritos, historial de
   subidas y la sesión recordada viven en `localStorage`/`IndexedDB` de
   este navegador — no se sincronizan entre dispositivos ni navegadores;
