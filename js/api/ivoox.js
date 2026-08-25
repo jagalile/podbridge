@@ -29,9 +29,14 @@ export async function getProgram(programUrl, { page = 1, signal } = {}) {
   };
 }
 
-/** URL (a través del Worker) desde la que descargar el audio en crudo. */
-export function audioProxyUrl(proxyBaseUrl, episodeUrl) {
-  return `${proxyBaseUrl}/ivoox/audio?url=${encodeURIComponent(episodeUrl)}`;
+/**
+ * URL (a través del Worker) desde la que descargar el audio en crudo.
+ * `filename`, si se da, hace que el Worker mande Content-Disposition para
+ * que el navegador lo guarde con ese nombre en vez de uno genérico.
+ */
+export function audioProxyUrl(proxyBaseUrl, episodeUrl, filename) {
+  const base = `${proxyBaseUrl}/ivoox/audio?url=${encodeURIComponent(episodeUrl)}`;
+  return filename ? `${base}&filename=${encodeURIComponent(filename)}` : base;
 }
 
 /** URL (a través del Worker) desde la que descargar una portada en crudo. */

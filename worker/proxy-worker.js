@@ -525,7 +525,16 @@ async function attachEpisodeSizes(episodes) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /ivoox/audio?url=  → retransmite el mp3 real de un episodio
+// GET /ivoox/audio?url=&filename=  → retransmite el mp3 real de un episodio
+//
+// Es solo una RESPUESTA en streaming — el Worker nunca manda este audio
+// como cuerpo de ninguna petición saliente, así que no le afecta ninguno
+// de los problemas de la subida a Pocket Casts (ver
+// handlePocketCastsUploadEpisode). Por eso también sirve de vía de escape
+// fiable para episodios grandes: un botón de "descargar mp3" en la UI que
+// usa esta URL directamente (con `download` en el enlace) para que el
+// propio navegador lo guarde en disco, sin pasar por JS en ningún momento
+// — y el usuario lo sube él mismo desde la app de Pocket Casts.
 // ---------------------------------------------------------------------------
 
 async function handleAudio(url, env) {
@@ -551,6 +560,14 @@ async function handleAudio(url, env) {
   headers.set("Content-Type", audioRes.headers.get("Content-Type") || "audio/mpeg");
   const len = audioRes.headers.get("Content-Length");
   if (len) headers.set("Content-Length", len);
+
+  // El atributo `download` de un <a> no siempre basta para sugerir nombre
+  // en un recurso de otro origen — Content-Disposition sí lo garantiza.
+  const filename = url.searchParams.get("filename");
+  if (filename) {
+    const safe = filename.replace(/[^\w\s().-]/g, "").trim().slice(0, 150) || "episodio";
+    headers.set("Content-Disposition", `attachment; filename="${safe}.mp3"`);
+  }
 
   return new Response(audioRes.body, { status: 200, headers });
 }

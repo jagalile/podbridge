@@ -55,8 +55,14 @@ ninguna de las dos.
 **Descarga y subida**
 - Un solo botón por episodio: el Worker descarga el audio de iVoox y lo
   sube a Archivos de Pocket Casts de servidor a servidor — el audio en sí
-  nunca pasa por tu navegador ni por tu conexión, así que episodios de
-  varias horas (cientos de MB) suben igual de bien que uno corto.
+  nunca pasa por tu navegador ni por tu conexión. Funciona bien para la
+  gran mayoría de episodios; los muy largos (varias horas, ~250+ MB)
+  todavía pueden fallar — ver
+  [Episodios muy grandes](#cómo-funciona-el-worker-por-dentro).
+- Para esos episodios grandes, un botón adicional de "descargar mp3"
+  (junto al de información) lo baja directo al navegador para que lo
+  subas tú mismo desde la app de Pocket Casts — no depende del Worker
+  para la parte que falla, así que siempre funciona.
 - Sube también la portada del episodio como imagen personalizada del
   fichero en Pocket Casts (si falla, el episodio se sube igualmente, solo
   que sin portada propia).
@@ -247,7 +253,7 @@ olvidar la sesión recordada en cualquier momento, basta con desactivarlo.
 | `GET /health` | Comprobación de vida, la usa la app para el indicador de estado |
 | `GET /ivoox/search?q=&type=` | Busca programas o episodios en iVoox |
 | `GET /ivoox/program?url=&page=` | Info de un programa + una página de sus episodios |
-| `GET /ivoox/audio?url=` | Retransmite el mp3 real de un episodio |
+| `GET /ivoox/audio?url=&filename=` | Retransmite el mp3 real de un episodio (`filename` sugiere el nombre al descargarlo) |
 | `GET /ivoox/image?url=` | Retransmite una portada (programa o episodio) |
 | `GET /ivoox/raw?url=` | HTML crudo de una URL de iVoox, solo para depurar el scraper |
 | `POST /pocketcasts/login` | Login contra Pocket Casts, devuelve el token de sesión |
@@ -323,20 +329,41 @@ grande (~260-270 MB):
   streams) seguía rompiendo con ficheros grandes — no con un error HTTP
   limpio, sino tirando la conexión entera a medias, algo que en el
   navegador se ve como un CORS/`Failed to fetch` espurio porque nunca
-  llega a haber una respuesta real. La causa es que el runtime de
+  llega a haber una respuesta real. La sospecha es que el runtime de
   Workers no propaga bien la contrapresión al encadenar streams con
-  `pipeTo()`: el Worker sigue leyendo de iVoox más rápido de lo que
-  consigue escribir hacia Pocket Casts y acumula el sobrante en memoria,
-  y con el límite de 128 MB por invocación que tiene cualquier Worker,
-  un episodio de 250+ MB la revienta. La solución es bombear los chunks
-  a mano en un bucle que sí espera a que cada escritura se resuelva
-  antes de pedir el siguiente, en vez de fiarse de `pipeTo()`.
+  `pipeTo()`, así que se sustituyó por un bombeo manual (un bucle que
+  espera a que cada escritura se resuelva antes de pedir el siguiente
+  trozo) — mejora las cosas pero **no las arregla del todo**: ver
+  "Episodios muy grandes" más abajo.
 
 La contrapartida de todo este diseño es que el navegador ya no puede
 pintar un progreso real en bytes durante esta fase (es una única
 petición de principio a fin): la UI la muestra como indeterminada en vez
 de fingir un porcentaje. La portada, que siempre es pequeña, sigue
 subiendo desde el navegador con progreso real.
+
+### Episodios muy grandes (varios cientos de MB)
+
+**Estado actual: sin resolver del todo.** Con episodios de varias horas
+(~250-280 MB), la subida automática de servidor a servidor sigue
+fallando en la práctica incluso después de los tres ajustes de streaming
+de arriba — el último diagnóstico en producción (con `wrangler tail`)
+muestra el PUT hacia Pocket Casts cortándose con un "Network connection
+lost" a los pocos cientos de KB, sin que quede claro todavía si es un
+límite duro del runtime de Workers para peticiones salientes largas, algo
+específico de la conexión con el almacenamiento de Pocket Casts, o algo
+que aún se puede arreglar por streaming. Se sigue investigando.
+
+Mientras tanto, la lista de episodios enseña un botón adicional de
+**descargar mp3** (icono de flecha hacia abajo, junto al de información)
+en cualquier episodio de más de ~100 MB: descarga el audio directo al
+navegador vía `/ivoox/audio` — una respuesta en streaming normal, que
+nunca ha tenido ninguno de estos problemas porque no es una petición
+saliente del Worker — y desde ahí puedes subirlo tú mismo a Pocket Casts
+usando su app oficial (Archivos → Subir un fichero), que al subir
+directamente desde tu dispositivo no pasa por ninguno de los límites de
+por medio. El botón normal de "Descargar y subir" se deja igualmente
+disponible por si la subida automática termina de arreglarse.
 
 Como ninguna de las dos es una API pública documentada, **pueden cambiar
 sin aviso**. Si algo deja de funcionar (títulos raros, episodios que no
