@@ -29,6 +29,21 @@ export function fmtDate(value) {
   return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+/** "hace 3 min" / "hace 2 h" / "hace 5 d" / fecha completa si hace más
+ * de una semana — para marcas de tiempo propias (p. ej. la última
+ * exportación de datos), no para el texto relativo de iVoox — para eso
+ * está parseRelativeDate(), que va al revés (texto → timestamp). */
+export function fmtRelativeTime(timestamp) {
+  if (!timestamp) return "";
+  const diff = Date.now() - timestamp;
+  const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
+  if (diff < MIN) return "justo ahora";
+  if (diff < HOUR) return `hace ${Math.floor(diff / MIN)} min`;
+  if (diff < DAY) return `hace ${Math.floor(diff / HOUR)} h`;
+  if (diff < 7 * DAY) return `hace ${Math.floor(diff / DAY)} d`;
+  return fmtDate(timestamp);
+}
+
 export function fmtBytes(bytes) {
   if (!bytes && bytes !== 0) return "";
   const units = ["B", "KB", "MB", "GB"];

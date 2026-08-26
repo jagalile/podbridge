@@ -2,7 +2,7 @@ import {
   state, subscribe, saveProxyUrl, saveRelayUrl, saveRelaySecret, setWorkerStatus, setRelayStatus, setPocketCasts, logoutPocketCasts, getJob,
   isFavorite, toggleFavorite, recordUpload,
   rememberMeSupported, persistPocketCastsSession, restorePersistedPocketCastsSession,
-  exportData, importData, setUsage,
+  exportData, importData, recordDataSync, hasUnsyncedChanges, setUsage,
 } from "./state.js";
 import * as ivoox from "./api/ivoox.js";
 import * as pocketcasts from "./api/pocketcasts.js";
@@ -14,7 +14,7 @@ import { skeletonGrid, skeletonList, idleState, emptyState, emptyFavoritesState,
 import { renderProgramCard, renderProgramRow, renderEpisodeCard, renderEpisodeRow, applyJobState, actionButton } from "./components/cards.js";
 import { openOverlay, closeOverlay } from "./components/overlay.js";
 import { openEpisodeModal } from "./components/episodeModal.js";
-import { debounce, escapeHtml, fmtBytes, parseRelativeDate } from "./utils.js";
+import { debounce, escapeHtml, fmtBytes, parseRelativeDate, fmtRelativeTime } from "./utils.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -247,6 +247,8 @@ $("#export-data").addEventListener("click", () => {
   URL.revokeObjectURL(url);
   $("#data-io-status").textContent = "Exportado ✓";
   setTimeout(() => { $("#data-io-status").textContent = ""; }, 2500);
+  recordDataSync("export");
+  renderDataSyncStatus();
 });
 
 const importInput = $("#import-data-input");
@@ -275,6 +277,7 @@ importInput.addEventListener("change", async () => {
     syncSettingsFields(); // el panel de ajustes puede seguir abierto con los campos desactualizados
     if (result.proxyUrlApplied) checkWorker();
     if (result.relayUrlApplied) checkRelay();
+    recordDataSync("import");
     render();
   } catch (err) {
     toast(`No se ha podido importar el archivo: ${err.message}`, "error");
@@ -806,11 +809,39 @@ function render() {
   });
 
   renderActiveJobs();
+  renderDataSyncStatus();
 
   if (!state.program.open) {
     if (state.search.type === "favorites") renderFavorites();
     else if (state.search.type === "favorite-episodes") renderFavoriteEpisodesList();
   }
+}
+
+/**
+ * "Control de versiones" sencillo del export/import: cuándo fue la
+ * última copia y si hay cambios desde entonces — para no descubrir que
+ * hace meses que no exportas justo cuando se estropea el navegador.
+ */
+function renderDataSyncStatus() {
+  const el = $("#data-sync-status");
+  const { lastExportedAt, lastImportedAt } = state.dataSync;
+  const lastSync = Math.max(lastExportedAt || 0, lastImportedAt || 0) || null;
+  const changed = hasUnsyncedChanges();
+
+  el.classList.toggle("is-attention", changed);
+
+  if (!lastSync) {
+    el.textContent = changed
+      ? "Nunca se ha exportado — hazlo para no perder tus favoritos y tu historial."
+      : "Todavía no hay nada que exportar.";
+    return;
+  }
+
+  const kind = lastExportedAt >= (lastImportedAt || 0) ? "Última exportación" : "Última importación";
+  const when = fmtRelativeTime(lastSync);
+  el.textContent = changed
+    ? `${kind}: ${when}. Hay cambios sin exportar — te recomendamos exportar de nuevo.`
+    : `${kind}: ${when}. Sin cambios desde entonces.`;
 }
 
 /**

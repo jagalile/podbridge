@@ -640,6 +640,13 @@ code {
 .field-toggle-visibility:hover, .field-toggle-visibility:focus-visible { color: var(--accent); }
 .field-status { font-size: 12.5px; color: var(--success); }
 
+/* "Control de versiones" de exportar/importar — neutro normalmente, y en
+   el mismo tono ámbar que el resto de avisos de "atención, no error"
+   (p. ej. el badge de contenido exclusivo) cuando hay cambios sin
+   exportar. */
+.data-sync-status { font-size: 12.5px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.5; }
+.data-sync-status.is-attention { color: var(--exclusive); font-weight: 600; }
+
 /* Ficha de cuenta conectada: antes era una fila que envolvía mal con
    emails largos (el botón "Desconectar" quedaba flotando junto a la
    primera línea del email). Ahora es su propio bloque con el email en

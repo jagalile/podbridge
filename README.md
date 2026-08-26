@@ -115,6 +115,10 @@ ninguna de las dos.
   configuración del relevo (URL y secreto) como un archivo JSON, para
   hacer copia de seguridad o pasarlos a otro navegador — nunca incluye
   contraseñas ni el token de Pocket Casts.
+- Junto a esos botones, un aviso sencillo de cuándo fue la última copia
+  (exportación o importación) y si ha habido cambios desde entonces — en
+  un color más llamativo cuando toca exportar de nuevo, para no
+  descubrir meses después que la última copia se quedó vieja.
 
 **Interfaz**
 - Diseño responsive (escritorio y móvil), con tema claro/oscuro
@@ -272,6 +276,7 @@ de datos ni backend propio. Qué se guarda, dónde y por qué:
 | URL y secreto del servicio de relevo | `localStorage` | — | No es una credencial de Pocket Casts, es configuración tuya — sí se incluye en la exportación de datos |
 | Favoritos | `localStorage` | — | No es sensible |
 | Episodios ya subidos | `localStorage` | — | No es sensible |
+| Fecha de la última exportación/importación | `localStorage` | — | Solo para el aviso de "cambios sin exportar" — nunca sale de este navegador |
 | Token de Pocket Casts (sesión activa) | `sessionStorage` | — | Se borra al cerrar la pestaña |
 | Token de Pocket Casts ("recordarme") | `localStorage` | Sí (AES-GCM) | Solo si activas la casilla |
 | Contraseña de Pocket Casts | *(no se guarda)* | — | Ni siquiera cifrada; viaja una vez y se descarta |

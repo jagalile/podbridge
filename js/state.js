@@ -24,6 +24,9 @@ const HISTORY_KEY = "pb.uploadHistory";
 const REMEMBER_KEY = "pb.pc.remember";
 const REMEMBERED_EMAIL_KEY = "pb.pc.rememberedEmail";
 const PERSISTED_TOKEN_KEY = "pb.pc.encryptedToken";
+const LAST_EXPORTED_AT_KEY = "pb.lastExportedAt";
+const LAST_IMPORTED_AT_KEY = "pb.lastImportedAt";
+const SYNC_SNAPSHOT_KEY = "pb.syncSnapshot";
 
 function loadJSON(key, fallback) {
   try {
@@ -96,6 +99,12 @@ export const state = {
   uploadHistory: loadJSON(HISTORY_KEY, {}),        // { [episodeId]: { title, uploadedAt } }
   // episodeId -> { status: idle|downloading|uploading|done|error, progress, error }
   jobs: new Map(),
+  // "Control de versiones" sencillo para exportar/importar — ver
+  // recordDataSync() y hasUnsyncedChanges() más abajo.
+  dataSync: {
+    lastExportedAt: Number(localStorage.getItem(LAST_EXPORTED_AT_KEY)) || null,
+    lastImportedAt: Number(localStorage.getItem(LAST_IMPORTED_AT_KEY)) || null,
+  },
 };
 
 export function subscribe(fn) {
@@ -283,15 +292,25 @@ export function recordUpload(episode) {
 
 const EXPORT_FORMAT_VERSION = 1;
 
-export function exportData() {
+/** Justo los campos que viajan en export/import, sin metadatos (versión,
+ * fecha) — para construir el archivo exportado y, por separado, para
+ * poder comparar "lo que hay ahora" con "lo último exportado/importado"
+ * (ver recordDataSync/hasUnsyncedChanges más abajo). */
+function exportableFields() {
   return {
-    podbridgeExport: EXPORT_FORMAT_VERSION,
-    exportedAt: new Date().toISOString(),
     proxyUrl: state.settings.proxyUrl,
     relayUrl: state.settings.relayUrl,
     relaySecret: state.settings.relaySecret,
     favorites: state.favorites,
     uploadHistory: state.uploadHistory,
+  };
+}
+
+export function exportData() {
+  return {
+    podbridgeExport: EXPORT_FORMAT_VERSION,
+    exportedAt: new Date().toISOString(),
+    ...exportableFields(),
   };
 }
 
@@ -348,6 +367,46 @@ export function importData(data, { merge = true } = {}) {
     relayUrlApplied,
     relaySecretApplied,
   };
+}
+
+// ---------------------------------------------------------------------------
+// "Control de versiones" de exportar/importar — sencillo a propósito: no
+// es un historial de versiones de verdad, solo "¿ha cambiado algo desde
+// la última vez que hice una copia?" para poder avisar si toca exportar
+// de nuevo. Se guarda una foto (JSON.stringify) de los mismos campos que
+// viajan en el archivo exportado, y se compara contra el estado actual.
+// ---------------------------------------------------------------------------
+
+/** Llamar justo después de un export o import con éxito. */
+export function recordDataSync(kind) {
+  const now = Date.now();
+  localStorage.setItem(SYNC_SNAPSHOT_KEY, JSON.stringify(exportableFields()));
+  if (kind === "export") {
+    state.dataSync.lastExportedAt = now;
+    localStorage.setItem(LAST_EXPORTED_AT_KEY, String(now));
+  } else {
+    state.dataSync.lastImportedAt = now;
+    localStorage.setItem(LAST_IMPORTED_AT_KEY, String(now));
+  }
+  notify();
+}
+
+/** true si hay algo exportable que no coincide con la última foto
+ * guardada — o si nunca se ha exportado/importado y ya hay algo que se
+ * perdería (sin eso, a un usuario nuevo sin nada guardado le avisaría de
+ * "cambios sin exportar" desde el primer segundo, sin sentido). */
+export function hasUnsyncedChanges() {
+  const stored = localStorage.getItem(SYNC_SNAPSHOT_KEY);
+  const current = exportableFields();
+  if (stored === null) {
+    return (
+      state.favorites.length > 0 ||
+      Object.keys(state.uploadHistory).length > 0 ||
+      !!state.settings.proxyUrl ||
+      !!state.settings.relayUrl
+    );
+  }
+  return stored !== JSON.stringify(current);
 }
 
 function dedupeById(list) {
