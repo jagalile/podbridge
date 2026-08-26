@@ -115,10 +115,11 @@ ninguna de las dos.
   configuración del relevo (URL y secreto) como un archivo JSON, para
   hacer copia de seguridad o pasarlos a otro navegador — nunca incluye
   contraseñas ni el token de Pocket Casts.
-- Junto a esos botones, un aviso sencillo de cuándo fue la última copia
-  (exportación o importación) y si ha habido cambios desde entonces — en
-  un color más llamativo cuando toca exportar de nuevo, para no
-  descubrir meses después que la última copia se quedó vieja.
+- Junto a esos botones, un aviso sencillo de cuándo fue la última
+  exportación y la última importación (cada una por separado, si ha
+  habido) y si ha habido cambios desde entonces — en un color más
+  llamativo cuando toca exportar de nuevo, para no descubrir meses
+  después que la última copia se quedó vieja.
 
 **Interfaz**
 - Diseño responsive (escritorio y móvil), con tema claro/oscuro

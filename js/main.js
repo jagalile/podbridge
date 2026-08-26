@@ -825,23 +825,27 @@ function render() {
 function renderDataSyncStatus() {
   const el = $("#data-sync-status");
   const { lastExportedAt, lastImportedAt } = state.dataSync;
-  const lastSync = Math.max(lastExportedAt || 0, lastImportedAt || 0) || null;
   const changed = hasUnsyncedChanges();
 
   el.classList.toggle("is-attention", changed);
 
-  if (!lastSync) {
+  // Se enseñan las dos fechas por separado (no solo la más reciente): si
+  // has importado en un navegador nuevo y luego exportas desde ahí, las
+  // dos son datos útiles, no uno solo tapando al otro.
+  const lines = [];
+  if (lastExportedAt) lines.push(`Última exportación: ${fmtRelativeTime(lastExportedAt)}.`);
+  if (lastImportedAt) lines.push(`Última importación: ${fmtRelativeTime(lastImportedAt)}.`);
+
+  if (lines.length === 0) {
     el.textContent = changed
       ? "Nunca se ha exportado — hazlo para no perder tus favoritos y tu historial."
       : "Todavía no hay nada que exportar.";
     return;
   }
 
-  const kind = lastExportedAt >= (lastImportedAt || 0) ? "Última exportación" : "Última importación";
-  const when = fmtRelativeTime(lastSync);
-  el.textContent = changed
-    ? `${kind}: ${when}. Hay cambios sin exportar — te recomendamos exportar de nuevo.`
-    : `${kind}: ${when}. Sin cambios desde entonces.`;
+  if (changed) lines.push("Hay cambios sin exportar — te recomendamos exportar de nuevo.");
+  else lines.push("Sin cambios desde entonces.");
+  el.innerHTML = lines.join("<br>");
 }
 
 /**
