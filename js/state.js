@@ -64,11 +64,22 @@ export const state = {
     usage: null, // { usedBytes, totalBytes, totalFiles }
   },
   search: {
-    type: "program",       // "program" | "episode" | "favorites"
+    type: "program",       // "program" | "favorites" | "favorite-episodes"
     query: "",
     status: "idle",         // idle | loading | success | empty | error
     error: "",
     results: [],
+  },
+  // Episodios de todos los programas favoritos, fusionados y ordenados
+  // por fecha (aproximada — ver parseRelativeDate en utils.js). Se
+  // recarga entero cada vez que se entra en esta pestaña (ver
+  // loadFavoriteEpisodes en main.js): es justo lo que se busca al
+  // abrirla, ver si hay algo nuevo, así que cachear datos viejos iría
+  // en contra del propósito.
+  favoriteEpisodes: {
+    status: "idle",         // idle | loading | success | empty | error
+    error: "",
+    episodes: [],
   },
   program: {
     open: false,

@@ -37,6 +37,37 @@ export function fmtBytes(bytes) {
   return `${n.toFixed(n >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+const MINUTE_MS = 60_000, HOUR_MS = 3_600_000, DAY_MS = 86_400_000;
+const WEEK_MS = 7 * DAY_MS, MONTH_MS = 30 * DAY_MS, YEAR_MS = 365 * DAY_MS;
+
+/**
+ * Convierte el texto relativo que da iVoox para la fecha de un episodio
+ * ("Hoy", "Ayer", "5 días", "2 semanas"...) en un timestamp aproximado.
+ * No hay ninguna fecha exacta en el HTML de iVoox, solo este texto — así
+ * que esto es necesariamente una aproximación, pensada para poder
+ * ordenar episodios de programas distintos por fecha (ver
+ * renderFavoriteEpisodes en main.js), no para saber el día exacto.
+ * Devuelve 0 (el valor más antiguo posible) si el texto no se reconoce,
+ * para que ese episodio caiga al final en vez de romper el orden.
+ */
+export function parseRelativeDate(text) {
+  if (!text) return 0;
+  const t = text.trim().toLowerCase();
+  if (t === "hoy") return Date.now();
+  if (t === "ayer") return Date.now() - DAY_MS;
+
+  const m = t.match(/^(\d+)\s*(minuto|min|hora|h|d[ií]a|semana|mes|a[ñn]o)/);
+  if (!m) return 0;
+  const n = Number(m[1]);
+  const unit = m[2];
+  if (unit.startsWith("min")) return Date.now() - n * MINUTE_MS;
+  if (unit === "hora" || unit === "h") return Date.now() - n * HOUR_MS;
+  if (unit.startsWith("d")) return Date.now() - n * DAY_MS;
+  if (unit.startsWith("semana")) return Date.now() - n * WEEK_MS;
+  if (unit.startsWith("mes")) return Date.now() - n * MONTH_MS;
+  return Date.now() - n * YEAR_MS; // año/anio
+}
+
 /**
  * A partir de este tamaño, Cloudflare Workers no consigue mantener
  * fiable la subida saliente hacia Pocket Casts — ver la sección

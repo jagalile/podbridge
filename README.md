@@ -36,11 +36,15 @@ ninguna de las dos.
 **Búsqueda**
 - Buscador de programas de iVoox, con portada, insignia de iVoox
   Originals y descripción (con "Leer más" para la versión completa).
-- Buscador de episodios sueltos por palabra clave (aproximado: busca
-  entre los episodios de los programas más afines a la búsqueda — iVoox
-  no indexa episodios individuales).
 - Buscador propio *dentro* de la lista de episodios de un programa ya
   abierto, para encontrar uno concreto sin bajar a mano.
+- **Episodios favoritos**: todos los episodios de tus programas
+  favoritos, juntos y ordenados por fecha — para ver de un vistazo si
+  hay algo nuevo sin entrar programa por programa. (Antes había un
+  "buscador de episodios sueltos por palabra clave" — se quitó porque
+  iVoox no indexa episodios individuales, así que en la práctica casi
+  nunca encontraba el episodio que buscabas; esto resuelve mejor el caso
+  real de uso.)
 
 **Programas y episodios**
 - Vista de programa con portada, descripción, enlace directo a iVoox
@@ -220,7 +224,7 @@ Sin este paso, todo funciona igual salvo que los episodios de más de
 
 ## Uso
 
-1. Busca un programa (o un episodio) desde la portada.
+1. Busca un programa desde la portada.
 2. Abre un programa para ver su lista completa de episodios — baja con
    scroll para cargar más, o usa el buscador propio de esa lista para
    encontrar uno concreto.
@@ -228,6 +232,9 @@ Sin este paso, todo funciona igual salvo que los episodios de más de
    iVoox y se sube a Pocket Casts automáticamente, con su portada.
 4. El botón de información (ⓘ) abre la ficha completa de un episodio sin
    salir de la lista.
+5. Marca programas como favoritos (☆) y usa la pestaña "Episodios
+   favoritos" para ver, todos juntos y ordenados por fecha, los
+   episodios de todo lo que sigues — sin entrar programa por programa.
 
 Los episodios marcados como **exclusivos** no tienen botón de descarga:
 es contenido de pago de iVoox y esta herramienta no lo toca.
@@ -295,7 +302,7 @@ olvidar la sesión recordada en cualquier momento, basta con desactivarlo.
 | Endpoint | Qué hace |
 |---|---|
 | `GET /health` | Comprobación de vida, la usa la app para el indicador de estado |
-| `GET /ivoox/search?q=&type=` | Busca programas o episodios en iVoox |
+| `GET /ivoox/search?q=` | Busca programas en iVoox |
 | `GET /ivoox/program?url=&page=` | Info de un programa + una página de sus episodios |
 | `GET /ivoox/image?url=` | Retransmite una portada (programa o episodio) |
 | `GET /ivoox/raw?url=` | HTML crudo de una URL de iVoox, solo para depurar el scraper |
@@ -493,10 +500,11 @@ aparecen, login o subida rotos), el sitio donde mirar es siempre
   actualice el Worker (ver sección anterior).
 - **Solo contenido público.** Los episodios exclusivos (Premium/Fans) no
   se pueden descargar, a propósito.
-- **Búsqueda de episodios aproximada.** No hay forma de indexar episodios
-  sueltos por palabra clave contra iVoox; se buscan los programas más
-  afines y se filtran sus episodios. Para un episodio muy concreto suele
-  ir mejor abrir el programa y usar el buscador de esa lista.
+- **El orden de "Episodios favoritos" es aproximado.** iVoox no da una
+  fecha exacta en el HTML, solo texto relativo ("Hoy", "5 días", "2
+  semanas"...) que se convierte a una fecha aproximada para poder
+  ordenar episodios de programas distintos entre sí — de sobra para ver
+  qué es más reciente, pero no una fecha exacta al día.
 - **Cada usuario necesita su propio Worker.** No es una limitación
   técnica sino de diseño: así ningún dato ni credencial pasa por un
   servidor compartido.

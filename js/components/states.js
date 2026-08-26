@@ -46,7 +46,7 @@ function stateBlock(container, { icon, title, text, tone, actionLabel, onAction 
 export function idleState(container) {
   stateBlock(container, {
     icon: "🎧",
-    title: "Empieza buscando un programa o un episodio",
+    title: "Empieza buscando un programa",
     text: "Los resultados de iVoox aparecerán aquí, junto con su tipo (Originals / independiente) y disponibilidad de descarga.",
   });
 }
@@ -55,7 +55,7 @@ export function emptyState(container, query) {
   stateBlock(container, {
     icon: "🔍",
     title: "Sin resultados",
-    text: `No hemos encontrado nada para “${query}”. Prueba con otro término o cambia entre Programas y Episodios.`,
+    text: `No hemos encontrado nada para “${query}”. Prueba con otro término.`,
   });
 }
 
@@ -75,6 +75,14 @@ export function emptyFavoritesState(container) {
     icon: "☆",
     title: "Aún no tienes programas favoritos",
     text: "Pulsa la estrella de cualquier programa para guardarlo aquí y encontrarlo rápido la próxima vez.",
+  });
+}
+
+export function emptyFavoriteEpisodesState(container) {
+  stateBlock(container, {
+    icon: "🎧",
+    title: "Sin episodios recientes",
+    text: "No se ha encontrado ningún episodio en tus programas favoritos ahora mismo.",
   });
 }
 

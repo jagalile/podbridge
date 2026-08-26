@@ -415,12 +415,20 @@ function parseProgramInfo(html, programUrl, originalsIds) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /ivoox/search?q=&type=program|episode
+// GET /ivoox/search?q=  → busca programas por nombre
+//
+// Hubo una vez un `type=episode` aquí: como iVoox no indexa episodios
+// sueltos por palabra clave, buscaba programas afines y filtraba sus
+// episodios por título — en la práctica era mala búsqueda (si el título
+// del episodio no se parecía al nombre del programa, no encontraba nada
+// aunque el episodio existiera). Se quitó a favor de un listado de
+// episodios de los programas favoritos, ordenado por fecha, que resuelve
+// mejor el caso real de uso ("¿hay algo nuevo en lo que sigo?") — ver
+// renderFavoriteEpisodes() en main.js.
 // ---------------------------------------------------------------------------
 
 async function handleSearch(url, env) {
   const q = url.searchParams.get("q");
-  const type = url.searchParams.get("type") === "episode" ? "episode" : "program";
   if (!q) return errorResponse("Falta el parámetro q", env, 400);
 
   const searchUrl = `https://www.ivoox.com/podcast-${slugify(q)}_sw_1_1_1.html`;
@@ -428,39 +436,7 @@ async function handleSearch(url, env) {
   const html = await res.text();
   const programs = parseProgramCards(html, originalsIds);
 
-  if (type === "program") {
-    return json({ results: programs, sourceUrl: searchUrl }, env);
-  }
-
-  // iVoox no indexa episodios sueltos por palabra clave (solo programas):
-  // buscamos los programas más afines y filtramos sus episodios cuyo
-  // título contiene la búsqueda. Es una aproximación razonable, no una
-  // búsqueda global de episodios — lo dejamos documentado en el README.
-  const candidates = programs.slice(0, 5);
-  const lowerQuery = q.toLowerCase();
-
-  const perProgram = await Promise.all(
-    candidates.map(async (program) => {
-      try {
-        const pRes = await fetchIvoox(program.url);
-        const pHtml = await pRes.text();
-        return parseEpisodeCards(pHtml).map((ep) => ({
-          ...ep,
-          program: program.title,
-          isOriginal: program.isOriginal,
-        }));
-      } catch {
-        return [];
-      }
-    }),
-  );
-
-  const results = perProgram
-    .flat()
-    .filter((ep) => ep.title.toLowerCase().includes(lowerQuery))
-    .slice(0, 30);
-
-  return json({ results, sourceUrl: searchUrl }, env);
+  return json({ results: programs, sourceUrl: searchUrl }, env);
 }
 
 // ---------------------------------------------------------------------------

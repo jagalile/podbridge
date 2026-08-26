@@ -13,9 +13,10 @@
 
 import { getJson } from "./proxy.js";
 
-export async function search(query, type, { signal } = {}) {
+/** Busca programas por nombre. */
+export async function search(query, { signal } = {}) {
   const q = encodeURIComponent(query.trim());
-  const data = await getJson(`/ivoox/search?q=${q}&type=${type}`, { signal });
+  const data = await getJson(`/ivoox/search?q=${q}`, { signal });
   return data.results || [];
 }
 

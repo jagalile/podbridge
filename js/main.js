@@ -10,11 +10,11 @@ import { pingWorker } from "./api/proxy.js";
 import { pingRelay } from "./api/relay.js";
 import { runEpisodeJob } from "./download.js";
 import { toast } from "./components/toast.js";
-import { skeletonGrid, skeletonList, idleState, emptyState, emptyFavoritesState, errorState, proxyMissingState } from "./components/states.js";
+import { skeletonGrid, skeletonList, idleState, emptyState, emptyFavoritesState, emptyFavoriteEpisodesState, errorState, proxyMissingState } from "./components/states.js";
 import { renderProgramCard, renderEpisodeCard, renderEpisodeRow, applyJobState, actionButton } from "./components/cards.js";
 import { openOverlay, closeOverlay } from "./components/overlay.js";
 import { openEpisodeModal } from "./components/episodeModal.js";
-import { debounce, escapeHtml, fmtBytes } from "./utils.js";
+import { debounce, escapeHtml, fmtBytes, parseRelativeDate } from "./utils.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -290,6 +290,12 @@ const searchInput = $("#search-input");
 // El botón "Buscar" se queda oculto en el HTML (solo para que Enter siga
 // enviando el formulario en cualquier navegador): la búsqueda se dispara
 // sola al escribir, igual que el filtro de la pestaña Favoritos.
+const SEARCH_PLACEHOLDERS = {
+  program: "Ej. “La Script” o “Nadie Sabe Nada”",
+  favorites: "Buscar en tus favoritos…",
+  "favorite-episodes": "Buscar en los episodios de tus favoritos…",
+};
+
 document.querySelectorAll(".search-type .chip").forEach((chip) => {
   chip.addEventListener("click", () => {
     document.querySelectorAll(".search-type .chip").forEach((c) => {
@@ -301,13 +307,10 @@ document.querySelectorAll(".search-type .chip").forEach((chip) => {
     state.search.type = chip.dataset.type;
     state.search.query = "";
     searchInput.value = "";
+    searchInput.placeholder = SEARCH_PLACEHOLDERS[state.search.type];
 
-    const isFavoritesTab = state.search.type === "favorites";
-    searchInput.placeholder = isFavoritesTab
-      ? "Buscar en tus favoritos…"
-      : "Ej. “La Script” o “Nadie Sabe Nada”";
-
-    if (isFavoritesTab) renderFavorites();
+    if (state.search.type === "favorites") renderFavorites();
+    else if (state.search.type === "favorite-episodes") loadFavoriteEpisodes();
     else renderResults();
   });
 });
@@ -337,10 +340,93 @@ function renderFavorites() {
   resultsEl.appendChild(wrap);
 }
 
+/**
+ * Trae los episodios de todos los programas favoritos (una petición por
+ * programa, en paralelo — ya sale de /ivoox/program, sin nada nuevo del
+ * lado del Worker), los fusiona y los ordena por fecha aproximada (ver
+ * parseRelativeDate). Si algún favorito falla, no rompe el resto — se
+ * queda sin sus episodios en vez de tirar toda la lista por la borda.
+ * Se recarga entero cada vez que se entra en esta pestaña: es justo lo
+ * que se busca al abrirla (¿hay algo nuevo?), así que reutilizar datos
+ * viejos iría en contra del propósito.
+ */
+async function loadFavoriteEpisodes() {
+  closeProgramView();
+
+  if (state.favorites.length === 0) {
+    state.favoriteEpisodes = { status: "empty", error: "", episodes: [] };
+    emptyFavoritesState(resultsEl);
+    return;
+  }
+  if (!state.settings.proxyUrl) {
+    state.favoriteEpisodes.status = "error";
+    proxyMissingState(resultsEl, openSettings);
+    return;
+  }
+
+  state.favoriteEpisodes.status = "loading";
+  skeletonList(resultsEl, 6);
+
+  try {
+    const perProgram = await Promise.all(
+      state.favorites.map(async (fav) => {
+        try {
+          const { episodes } = await ivoox.getProgram(fav.url, { page: 1 });
+          return episodes;
+        } catch {
+          return []; // un favorito que falla no debe tirar el resto de la lista
+        }
+      }),
+    );
+    const episodes = perProgram.flat().sort(
+      (a, b) => parseRelativeDate(b.date) - parseRelativeDate(a.date),
+    );
+    state.favoriteEpisodes = { status: episodes.length ? "success" : "empty", error: "", episodes };
+    renderFavoriteEpisodesList();
+  } catch (err) {
+    state.favoriteEpisodes.status = "error";
+    state.favoriteEpisodes.error = err.message;
+    errorState(resultsEl, err.message, loadFavoriteEpisodes);
+  }
+}
+
+/** Pura: pinta state.favoriteEpisodes.episodes (con el filtro de texto
+ * aplicado) sin volver a pedir nada a la red — para el filtro al escribir
+ * y para refrescos reactivos (p.ej. cuando cambia el estado de un job). */
+function renderFavoriteEpisodesList() {
+  // No depende de state.favoriteEpisodes.status para esto — puede haber
+  // quedado en "success" de antes si el usuario quita su último favorito
+  // mientras sigue en esta pestaña.
+  if (state.favorites.length === 0) return emptyFavoritesState(resultsEl);
+
+  const { status, error, episodes } = state.favoriteEpisodes;
+  if (status === "loading") return skeletonList(resultsEl, 6);
+  if (status === "error") return errorState(resultsEl, error, loadFavoriteEpisodes);
+
+  const query = state.search.query.trim().toLowerCase();
+  const visible = query ? episodes.filter((ep) => ep.title.toLowerCase().includes(query)) : episodes;
+
+  if (episodes.length === 0) {
+    return emptyFavoriteEpisodesState(resultsEl);
+  }
+  if (query && visible.length === 0) {
+    return emptyState(resultsEl, state.search.query);
+  }
+
+  resultsEl.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.className = "list";
+  for (const ep of visible) {
+    wrap.appendChild(renderEpisodeCard(ep, handleEpisodeAction, showEpisodeInfo));
+  }
+  resultsEl.appendChild(wrap);
+}
+
 searchForm.addEventListener("submit", (e) => {
   e.preventDefault();
   state.search.query = searchInput.value.trim();
   if (state.search.type === "favorites") renderFavorites();
+  else if (state.search.type === "favorite-episodes") renderFavoriteEpisodesList();
   else doSearch();
 });
 
@@ -355,6 +441,9 @@ searchInput.addEventListener("input", () => {
   if (state.search.type === "favorites") {
     state.search.query = searchInput.value;
     renderFavorites();
+  } else if (state.search.type === "favorite-episodes") {
+    state.search.query = searchInput.value;
+    renderFavoriteEpisodesList();
   } else {
     debouncedTypeahead();
   }
@@ -380,7 +469,7 @@ async function doSearch() {
   skeletonGrid(resultsEl, 8);
 
   try {
-    const results = await ivoox.search(query, state.search.type, { signal: searchAbort.signal });
+    const results = await ivoox.search(query, { signal: searchAbort.signal });
     state.search.results = results;
     state.search.status = results.length ? "success" : "empty";
     renderResults();
@@ -400,14 +489,9 @@ function renderResults() {
 
   resultsEl.innerHTML = "";
   const wrap = document.createElement("div");
-  wrap.className = state.search.type === "program" ? "grid" : "list";
-
+  wrap.className = "grid";
   for (const item of state.search.results) {
-    if (item.type === "program") {
-      wrap.appendChild(renderProgramCard(item, openProgram));
-    } else {
-      wrap.appendChild(renderEpisodeCard(item, handleEpisodeAction, showEpisodeInfo));
-    }
+    wrap.appendChild(renderProgramCard(item, openProgram));
   }
   resultsEl.appendChild(wrap);
 }
@@ -716,13 +800,17 @@ function render() {
 
   document.querySelectorAll(".action-btn[data-episode-id]").forEach((btn) => {
     const id = btn.dataset.episodeId;
-    const episode = [...state.search.results, ...state.program.episodes].find((e) => e.id === id);
+    const episode = [...state.search.results, ...state.program.episodes, ...state.favoriteEpisodes.episodes]
+      .find((e) => e.id === id);
     if (episode) applyJobState(btn, episode);
   });
 
   renderActiveJobs();
 
-  if (state.search.type === "favorites" && !state.program.open) renderFavorites();
+  if (!state.program.open) {
+    if (state.search.type === "favorites") renderFavorites();
+    else if (state.search.type === "favorite-episodes") renderFavoriteEpisodesList();
+  }
 }
 
 /**
