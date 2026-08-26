@@ -27,7 +27,7 @@ import { state, setJob } from "./state.js";
 import { imageProxyUrl } from "./api/ivoox.js";
 import { uploadEpisodeFromIvoox, uploadImage, requestEpisodeUploadInit, cancelEpisodeUpload } from "./api/pocketcasts.js";
 import { relayUpload } from "./api/relay.js";
-import { uuid, LARGE_EPISODE_BYTES } from "./utils.js";
+import { LARGE_EPISODE_BYTES } from "./utils.js";
 import { noteJobStarted, noteJobEnded } from "./wakelock.js";
 
 // Reparto del progreso 0..1 mostrado en la UI según haya o no portada que
@@ -263,5 +263,3 @@ async function downloadBinary(url, onProgress, signal) {
   }
   return new Blob(chunks, { type: contentType });
 }
-
-export { uuid };

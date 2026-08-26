@@ -25,8 +25,11 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          # Todo el sitio es estático y vive en la raíz del repo; se excluye
-          # la carpeta del Worker, que no forma parte del frontend.
+          # El frontend es estático y vive en la raíz del repo, así que se
+          # publica el repo entero tal cual (sin build) — incluye también
+          # /worker y /relay-service, que no forman parte del sitio en sí
+          # pero no tiene nada sensible: es el mismo código fuente que ya
+          # es público en este repositorio.
           path: .
       - id: deployment
         uses: actions/deploy-pages@v4

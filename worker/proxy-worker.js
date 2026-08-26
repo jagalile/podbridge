@@ -644,19 +644,14 @@ function bytesToHex(bytes) {
  * Copia un ReadableStream a un WritableStream a mano, agrupando los
  * trozos pequeños que van llegando (normalmente ~64 KB cada uno) en
  * bloques mayores antes de escribir, y esperando explícitamente a que
- * cada `write()` se resuelva antes de seguir leyendo. Dos motivos para
- * esto en vez de escribir cada trozo tal cual llega:
- *
- *   - Es lo que `readable.pipeTo(writable)` debería hacer, pero en el
- *     runtime de Workers encadenar streams así con pipeTo() no propaga
- *     bien la contrapresión y puede acumular en memoria más de lo que
- *     permite el límite de 128 MB por invocación en ficheros grandes.
- *   - En la práctica (comprobado con `wrangler tail`), escribir muchos
- *     trozos pequeños seguidos hacía que el PUT hacia Pocket Casts se
- *     cortase siempre en el mismo punto, a los pocos cientos de KB, con
- *     "Network connection lost" — agrupar en bloques de varios MB reduce
- *     drásticamente cuántas idas y vueltas hacen falta para todo el
- *     fichero, por si el corte estaba relacionado con esa cadencia.
+ * cada `write()` se resuelva antes de seguir leyendo. Es, en esencia, lo
+ * que `readable.pipeTo(writable)` debería hacer — pero en el runtime de
+ * Workers, encadenar streams así con pipeTo() no propaga bien la
+ * contrapresión: el Worker puede acabar leyendo más rápido de lo que
+ * escribe y acumulando el sobrante en memoria hasta reventar el límite de
+ * 128 MB por invocación en ficheros grandes. Agrupar en bloques de varios
+ * MB, además, reduce cuántas idas y vueltas hacen falta para todo el
+ * fichero.
  *
  * No se espera a que termine — corre en paralelo al fetch que consume el
  * otro extremo del stream.
@@ -781,36 +776,21 @@ async function handlePocketCastsUploadEpisode(request, env) {
   console.log(`upload-episode: URL prefirmada obtenida (uuid ${id}), empezando el PUT`);
 
   // El audio se retransmite en streaming directo de iVoox a S3: nunca pasa
-  // por memoria como un buffer completo, ni por el navegador. Por el
-  // camino hicieron falta tres ajustes, no uno, para que esto funcione de
-  // verdad con episodios grandes (~260-270 MB):
+  // por memoria como un buffer completo, ni por el navegador. Dos detalles
+  // no evidentes hacen falta para que esto aguante episodios grandes
+  // (~250+ MB) en el runtime de Workers:
   //
-  //   1. Pasar audioRes.body TAL CUAL como body de este segundo fetch
-  //      (encadenar directamente el readable de una respuesta como
-  //      request de otra) provoca un 413 al azar en ficheros grandes.
-  //   2. Intercalar un TransformStream normal en medio arregla ese 413,
-  //      pero el runtime manda entonces el body como
-  //      "Transfer-Encoding: chunked" en cuanto es un stream de longitud
-  //      desconocida — y las URLs pre-firmadas de S3 (lo que hay detrás
-  //      de Pocket Casts) no soportan chunked: lo rechazan con un 501.
-  //      FixedLengthStream (declarar de antemano cuántos bytes van a
-  //      pasar) arregla esto forzando un Content-Length real.
-  //   3. Con eso arreglado, `.pipeTo()` para conectar el readable de
-  //      iVoox con el writable de FixedLengthStream sigue rompiendo con
-  //      ficheros grandes — no con un error HTTP limpio, sino tirando
-  //      la conexión entera a medias (se ve en el navegador como un
-  //      "Failed to fetch"/CORS espurio, porque nunca llega a haber una
-  //      respuesta real que traiga cabeceras). La causa: el runtime de
-  //      Workers no propaga bien la contrapresión (backpressure) al
-  //      encadenar streams con pipeTo(), así que el Worker sigue leyendo
-  //      de iVoox más rápido de lo que consigue escribir hacia Pocket
-  //      Casts y acumula el sobrante en memoria — con el límite de
-  //      128 MB por invocación que tiene cualquier Worker, un episodio de
-  //      250+ MB revienta esa memoria y el runtime mata la petición en
-  //      seco. La solución es no usar pipeTo(): bombear los chunks a mano
-  //      con un bucle que SÍ espera (`await writer.write(chunk)`) a que
-  //      el lado de escritura esté listo antes de pedir el siguiente,
-  //      igual que pipeTo() debería hacer pero aquí no lo hace bien.
+  //   - FixedLengthStream en vez de un TransformStream normal: sin
+  //     declarar de antemano cuántos bytes van a pasar, el runtime manda
+  //     el cuerpo como "Transfer-Encoding: chunked", y las URLs
+  //     pre-firmadas de S3 (lo que hay detrás de Pocket Casts) rechazan
+  //     chunked con un 501.
+  //   - pumpWithBackpressure() en vez de `.pipeTo()`: encadenar streams
+  //     con pipeTo() no propaga bien la contrapresión en este runtime, así
+  //     que el Worker puede acabar leyendo de iVoox más rápido de lo que
+  //     escribe hacia Pocket Casts y acumulando el sobrante en memoria
+  //     hasta reventar el límite de 128 MB por invocación.
+  //
   // A partir de aquí Pocket Casts YA tiene un registro del fichero (con
   // el uuid `id`), aunque el audio en sí todavía no le haya llegado — si
   // algo falla de aquí en adelante, ese registro se queda huérfano en
@@ -830,15 +810,10 @@ async function handlePocketCastsUploadEpisode(request, env) {
     });
 
     if (!putRes.ok) {
-      // Diagnóstico no sensible (nunca la URL pre-firmada ni nada del
-      // token): con varios intentos fallidos seguidos con errores
-      // distintos (413, 501, 413 de nuevo) para los mismos episodios
-      // grandes, hace falta ver qué contesta realmente el otro lado en
-      // vez de seguir adivinando — en concreto, si trae cabeceras
-      // típicas de S3 (server, x-amz-request-id) la petición sí llegó
-      // al almacenamiento y lo rechazó él; si no trae ninguna, lo más
-      // probable es que Cloudflare la haya cortado antes de salir de su
-      // red.
+      // Diagnóstico no sensible (nunca la URL pre-firmada ni el token):
+      // cabeceras típicas de S3 (server, x-amz-request-id) indican que la
+      // petición sí llegó al almacenamiento y lo rechazó él; su ausencia
+      // apunta a que la cortó antes la propia red de Cloudflare.
       const bodyText = await putRes.text().catch(() => "");
       await deleteUploadedFile(id, token);
       return json(
@@ -871,10 +846,8 @@ async function handlePocketCastsUploadEpisode(request, env) {
  * FileDeleteRequest: campo 1 = uuid) cuya subida ha fallado después de
  * que Pocket Casts ya le hubiera dado un hueco — sin esto, cada intento
  * fallido deja una entrada huérfana en "Procesando…" para siempre en la
- * cuenta del usuario (así es como se descubrió esto: una lista larga de
- * duplicados sin terminar de subir nunca, uno por cada intento fallido
- * durante el desarrollo). Nunca lanza: si el borrado también falla, no
- * debe tapar el error original que provocó la limpieza.
+ * cuenta del usuario. Nunca lanza: si el borrado también falla, no debe
+ * tapar el error original que provocó la limpieza.
  */
 async function deleteUploadedFile(uuid, token) {
   try {
