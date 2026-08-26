@@ -161,6 +161,31 @@ async function checkRelay() {
 }
 checkRelay();
 
+// Botón para despertar el relevo a mano — pensado para pulsarlo un
+// minuto antes de subir un episodio grande, en vez de que esa primera
+// subida del día se coma los 30-50s de arranque en frío del plan
+// gratuito de Render.
+$("#wake-relay").addEventListener("click", async (e) => {
+  if (!state.settings.relayUrl) {
+    toast("Configura primero la URL del servicio de relevo.", "error");
+    return;
+  }
+  const btn = e.currentTarget;
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Comprobando…";
+  await checkRelay();
+  btn.textContent = originalText;
+  btn.disabled = false;
+
+  const { status, wasSleeping } = state.relay;
+  if (status === "ok") {
+    toast(wasSleeping ? "Estaba dormido — ya está despierto y listo." : "Ya estaba activo.", "success");
+  } else {
+    toast("No se ha podido contactar con el relevo — revisa la URL y el secreto.", "error");
+  }
+});
+
 $("#pc-login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!state.settings.proxyUrl) {
@@ -610,7 +635,14 @@ function renderProgram() {
     `;
 
     $("#program-favorite-btn").addEventListener("click", () => {
+      const wasFavorite = isFavorite(info.id);
       toggleFavorite(info);
+      if (wasFavorite) {
+        toast(`“${info.title}” quitado de favoritos`, "info", {
+          actionLabel: "Deshacer",
+          onAction: () => { toggleFavorite(info); renderProgram(); },
+        });
+      }
       renderProgram();
     });
 

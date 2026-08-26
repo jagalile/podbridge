@@ -107,7 +107,8 @@ ninguna de las dos.
 - Marca programas como favoritos con un toque (desde la tarjeta de
   búsqueda o desde la propia ficha del programa) y encuéntralos luego en
   la pestaña "Favoritos" del buscador, que además tiene su propio filtro
-  por título para cuando la lista crece.
+  por título para cuando la lista crece. Si quitas uno sin querer, el
+  aviso trae un botón de "Deshacer".
 - Los episodios ya subidos se recuerdan entre sesiones: si vuelves más
   tarde, siguen marcados como subidos en vez de ofrecerte subirlos otra
   vez.
@@ -484,7 +485,10 @@ El plan gratuito de Render "duerme" el servicio tras ~15 minutos sin
 uso — la primera petición después de eso tarda unos 30-50 segundos en
 arrancar (el navegador esperará ese tiempo en la fase de subida antes de
 que empiece a moverse nada; no hace falta hacer nada especial, solo
-tener paciencia esa primera vez).
+tener paciencia esa primera vez). Si prefieres no esperar a mitad de una
+subida, el botón **"Despertar ahora"** junto al de Guardar hace un ping
+y avisa de si estaba dormido o ya activo — útil pulsarlo un minuto antes
+de ponerte con un episodio largo.
 
 Como ninguna de las dos es una API pública documentada, **pueden cambiar
 sin aviso**. Si algo deja de funcionar (títulos raros, episodios que no

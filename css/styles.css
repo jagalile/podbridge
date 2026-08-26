@@ -749,6 +749,9 @@ code {
   max-width: min(360px, calc(100vw - 40px));
 }
 .toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-left: 4px solid var(--accent);
@@ -757,6 +760,19 @@ code {
   box-shadow: var(--shadow-m);
   font-size: 13.5px;
   animation: toast-in .18s ease;
+}
+.toast-text { flex: 1; }
+.toast-action {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .toast[data-tone="success"] { border-left-color: var(--success); }
 .toast[data-tone="error"] { border-left-color: var(--danger); }

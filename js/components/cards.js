@@ -5,6 +5,7 @@
 import { clone, fmtDuration, fmtDate, fmtBytes, escapeHtml } from "../utils.js";
 import { getJob, isFavorite, toggleFavorite } from "../state.js";
 import { cancelJob } from "../download.js";
+import { toast } from "./toast.js";
 
 const FALLBACK_COVER =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23e3e1db'/%3E%3Ctext x='50' y='58' font-size='40' text-anchor='middle'%3E%F0%9F%8E%99%EF%B8%8F%3C/text%3E%3C/svg%3E";
@@ -26,7 +27,7 @@ export function renderProgramCard(program, onOpen) {
   syncFavoriteButton(favBtn, program.id);
   favBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    toggleFavorite(program);
+    toggleFavoriteWithUndo(program);
     syncFavoriteButton(favBtn, program.id);
   });
 
@@ -38,6 +39,20 @@ function syncFavoriteButton(btn, programId) {
   btn.classList.toggle("is-favorite", fav);
   btn.setAttribute("aria-label", fav ? "Quitar de favoritos" : "Añadir a favoritos");
   btn.title = fav ? "Quitar de favoritos" : "Añadir a favoritos";
+}
+
+/** toggleFavorite(), pero con un "Deshacer" cuando la acción es quitar
+ * un favorito — añadir uno no hace falta deshacerlo (basta con pulsar
+ * otra vez), pero quitarlo por error sí merece una red de seguridad. */
+function toggleFavoriteWithUndo(program) {
+  const wasFavorite = isFavorite(program.id);
+  toggleFavorite(program);
+  if (wasFavorite) {
+    toast(`“${program.title}” quitado de favoritos`, "info", {
+      actionLabel: "Deshacer",
+      onAction: () => toggleFavorite(program), // ya no es favorito: esto lo vuelve a añadir
+    });
+  }
 }
 
 /** Como renderProgramCard(), pero en una fila compacta en vez de una
@@ -61,7 +76,7 @@ export function renderProgramRow(program, onOpen) {
   syncFavoriteButton(favBtn, program.id);
   favBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    toggleFavorite(program);
+    toggleFavoriteWithUndo(program);
     syncFavoriteButton(favBtn, program.id);
   });
 
