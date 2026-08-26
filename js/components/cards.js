@@ -40,6 +40,34 @@ function syncFavoriteButton(btn, programId) {
   btn.title = fav ? "Quitar de favoritos" : "Añadir a favoritos";
 }
 
+/** Como renderProgramCard(), pero en una fila compacta en vez de una
+ * tarjeta grande — para la pestaña Favoritos, donde ya sabes qué
+ * programas son (no hace falta la tarjeta grande pensada para explorar
+ * resultados de búsqueda). */
+export function renderProgramRow(program, onOpen) {
+  const node = clone("tpl-program-row");
+  const img = node.querySelector("img");
+  img.src = program.image || FALLBACK_COVER;
+  img.alt = program.title;
+  img.onerror = () => { img.src = FALLBACK_COVER; };
+
+  if (program.isOriginal) node.querySelector(".program-badges").hidden = false;
+
+  node.querySelector(".program-title").textContent = program.title;
+  node.querySelector(".program-author").textContent = program.author || "";
+  node.querySelector(".program-row-open").addEventListener("click", () => onOpen(program));
+
+  const favBtn = node.querySelector(".favorite-btn");
+  syncFavoriteButton(favBtn, program.id);
+  favBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleFavorite(program);
+    syncFavoriteButton(favBtn, program.id);
+  });
+
+  return node;
+}
+
 export function renderEpisodeCard(episode, onAction, onInfo) {
   const node = clone("tpl-episode-card");
   const img = node.querySelector("img");

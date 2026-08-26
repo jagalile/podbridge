@@ -11,7 +11,7 @@ import { pingRelay } from "./api/relay.js";
 import { runEpisodeJob } from "./download.js";
 import { toast } from "./components/toast.js";
 import { skeletonGrid, skeletonList, idleState, emptyState, emptyFavoritesState, emptyFavoriteEpisodesState, errorState, proxyMissingState } from "./components/states.js";
-import { renderProgramCard, renderEpisodeCard, renderEpisodeRow, applyJobState, actionButton } from "./components/cards.js";
+import { renderProgramCard, renderProgramRow, renderEpisodeCard, renderEpisodeRow, applyJobState, actionButton } from "./components/cards.js";
 import { openOverlay, closeOverlay } from "./components/overlay.js";
 import { openEpisodeModal } from "./components/episodeModal.js";
 import { debounce, escapeHtml, fmtBytes, parseRelativeDate } from "./utils.js";
@@ -333,9 +333,9 @@ function renderFavorites() {
   }
   resultsEl.innerHTML = "";
   const wrap = document.createElement("div");
-  wrap.className = "grid";
+  wrap.className = "list";
   for (const program of visible) {
-    wrap.appendChild(renderProgramCard(program, openProgram));
+    wrap.appendChild(renderProgramRow(program, openProgram));
   }
   resultsEl.appendChild(wrap);
 }

@@ -477,7 +477,7 @@ code {
   color: var(--text-muted);
   font-size: 13px;
 }
-.episode-row {
+.episode-row, .program-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -490,6 +490,29 @@ code {
 .episode-row-cover { width: 56px; height: 56px; border-radius: var(--radius-s); flex: none; }
 .episode-row-main { min-width: 0; flex: 1; }
 .episode-row .episode-title { white-space: normal; font-size: 14px; }
+
+/* Fila de programa (pestaña Favoritos) — misma altura compacta que
+   .episode-row, con el botón de favorito fuera del flujo absoluto que
+   usa en la tarjeta grande (aquí no hay portada grande sobre la que
+   flotar). */
+.program-row-open {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.program-row .program-title { font-size: 14px; -webkit-line-clamp: 1; }
+.program-row .program-author { -webkit-line-clamp: 1; }
+.program-row .program-badges { margin: 2px 0; }
+.program-row .favorite-btn { position: static; flex: none; }
 
 .info-btn {
   width: 38px; height: 38px; flex: none;
