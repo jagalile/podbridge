@@ -259,17 +259,48 @@ restorePersistedPocketCastsSession().then(() => { render(); loadUsage(); });
 // ---------------------------------------------------------------------------
 // Exportar / importar datos (favoritos, historial, URL del Worker)
 // ---------------------------------------------------------------------------
-$("#export-data").addEventListener("click", () => {
-  const data = exportData();
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
+
+/**
+ * Algunas apps que "envuelven" una web como si fuera una app nativa (p.ej.
+ * Hermit en Android) usan un WebView que no implementa la descarga de
+ * blobs vía `<a download>` — el clic no hace nada, sin ningún error
+ * visible. La Web Share API sí suele funcionar ahí, porque en vez del
+ * mecanismo de descarga del navegador usa el intent nativo de "compartir"
+ * de Android (el usuario elige guardarlo en Archivos, mandarlo por
+ * Drive...). Se prueba primero esa vía si el navegador la soporta para
+ * archivos, y si no, se cae al `<a download>` de siempre (funciona bien en
+ * Chrome de escritorio y en el navegador "normal" de Android).
+ * @returns {Promise<boolean>} false si el usuario canceló el share sheet
+ */
+async function downloadExportedFile(filename, json) {
+  const file = new File([json], filename, { type: "application/json" });
+
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: filename });
+      return true;
+    } catch (err) {
+      if (err.name === "AbortError") return false; // cancelado en el share sheet
+      // si falla por otro motivo, se sigue probando con la descarga normal
+    }
+  }
+
+  const url = URL.createObjectURL(file);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `podbridge-datos-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+  return true;
+}
+
+$("#export-data").addEventListener("click", async () => {
+  const data = exportData();
+  const filename = `podbridge-datos-${new Date().toISOString().slice(0, 10)}.json`;
+  const ok = await downloadExportedFile(filename, JSON.stringify(data, null, 2));
+  if (!ok) return;
   $("#data-io-status").textContent = "Exportado ✓";
   setTimeout(() => { $("#data-io-status").textContent = ""; }, 2500);
   recordDataSync("export");
