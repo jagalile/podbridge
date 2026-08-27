@@ -2,6 +2,7 @@
 // habla con api.pocketcasts.com (login + subida a Archivos vía protobuf).
 
 import { postJson, request, ProxyRequestError } from "./proxy.js";
+import { state } from "../state.js";
 
 export async function login(email, password) {
   try {
@@ -146,9 +147,5 @@ function xhrUpload(path, params, blob, contentType, token, onProgress, signal) {
 }
 
 function resolveBase() {
-  // Lectura directa de localStorage (en vez de importar state.js) para
-  // evitar un ciclo de módulos; es la misma clave que usa saveProxyUrl().
-  return localStorage.getItem("pb.proxyUrl") || "";
+  return state.settings.proxyUrl;
 }
-
-export { request };

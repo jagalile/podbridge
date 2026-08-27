@@ -45,6 +45,7 @@ function syncSettingsFields() {
 function openSettings() {
   syncSettingsFields();
   openOverlay(settingsPanel);
+  renderDataSyncStatus(); // solo se recalcula con el panel abierto, ver su doc
 }
 function closeSettings() {
   closeOverlay();
@@ -705,7 +706,12 @@ function closeProgramView() {
   resultsEl.hidden = false;
   heroEl.hidden = false;
 }
-$("#back-to-results").addEventListener("click", closeProgramView);
+// Al volver hay que repintar: si se ha quitado el programa de favoritos
+// desde su propia ficha, la lista de detrás todavía lo estaba mostrando.
+$("#back-to-results").addEventListener("click", () => {
+  closeProgramView();
+  render();
+});
 
 episodeFilterEl.addEventListener("input", () => {
   state.program.filterQuery = episodeFilterEl.value;
@@ -895,6 +901,8 @@ function computeConnectionDetails() {
   return { worker, pocket, relay };
 }
 
+let lastFavoritesSignature = state.favorites.map((f) => f.id).join(",");
+
 function render() {
   const pc = state.pocketcasts;
   const overall = computeOverallStatus();
@@ -945,17 +953,33 @@ function render() {
     fill.classList.toggle("is-full", pct >= 90);
   }
 
-  document.querySelectorAll(".action-btn[data-episode-id]").forEach((btn) => {
-    const id = btn.dataset.episodeId;
-    const episode = [...state.search.results, ...state.program.episodes, ...state.favoriteEpisodes.episodes]
-      .find((e) => e.id === id);
-    if (episode) applyJobState(btn, episode);
-  });
+  // render() se dispara en cada cambio del store, incluidos los avances de
+  // progreso de una descarga en curso (varias veces por segundo), así que
+  // el índice se construye una vez por render en vez de recorrer las tres
+  // listas enteras para cada botón que haya en pantalla.
+  const buttons = document.querySelectorAll(".action-btn[data-episode-id]");
+  if (buttons.length) {
+    const byId = new Map();
+    for (const ep of [...state.search.results, ...state.program.episodes, ...state.favoriteEpisodes.episodes]) {
+      if (!byId.has(ep.id)) byId.set(ep.id, ep);
+    }
+    for (const btn of buttons) {
+      const episode = byId.get(btn.dataset.episodeId);
+      if (episode) applyJobState(btn, episode);
+    }
+  }
 
   renderActiveJobs();
   renderDataSyncStatus();
 
-  if (!state.program.open) {
+  // Estas dos listas se repintan enteras (innerHTML), así que solo se
+  // rehacen cuando cambia realmente qué programas hay en favoritos — que
+  // es lo único que puede alterarlas sin pasar por su propio manejador.
+  // El estado de los jobs ya se refleja botón a botón justo arriba, sin
+  // necesidad de reconstruir la lista en cada avance de progreso.
+  const favoritesSignature = state.favorites.map((f) => f.id).join(",");
+  if (!state.program.open && favoritesSignature !== lastFavoritesSignature) {
+    lastFavoritesSignature = favoritesSignature;
     if (state.search.type === "favorites") renderFavorites();
     else if (state.search.type === "favorite-episodes") renderFavoriteEpisodesList();
   }
@@ -965,8 +989,15 @@ function render() {
  * "Control de versiones" sencillo del export/import: cuándo fue la
  * última copia y si hay cambios desde entonces — para no descubrir que
  * hace meses que no exportas justo cuando se estropea el navegador.
+ *
+ * Saber si hay cambios implica serializar favoritos e historial enteros
+ * para compararlos con la última copia, y esto vive dentro del panel de
+ * Ajustes — que está cerrado casi siempre. Con el panel cerrado se sale
+ * antes de hacer ese trabajo: openSettings() lo vuelve a pintar al abrir.
  */
 function renderDataSyncStatus() {
+  if (!settingsPanel.classList.contains("is-open")) return;
+
   const el = $("#data-sync-status");
   const { lastExportedAt, lastImportedAt } = state.dataSync;
   const changed = hasUnsyncedChanges();

@@ -240,11 +240,13 @@ code {
 .program-episode-search {
   position: relative;
   flex: 1 1 320px;
-  max-width: 420px;
 }
+.search-input-wrap { max-width: 420px; }
 .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-faint); }
 
-.program-episode-search { max-width: 100%; margin-bottom: 18px; }
+/* El buscador de dentro de un programa ocupa el ancho entero, a diferencia
+   del de la portada, que va acotado junto a las pestañas. */
+.program-episode-search { margin-bottom: 18px; }
 .program-episode-search input {
   width: 100%;
   padding: 10px 14px 10px 40px;

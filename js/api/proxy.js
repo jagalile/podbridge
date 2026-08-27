@@ -25,7 +25,7 @@ function baseUrl() {
   return url;
 }
 
-async function request(path, { method = "GET", body, headers = {}, signal } = {}) {
+export async function request(path, { method = "GET", body, headers = {}, signal } = {}) {
   const res = await fetch(`${baseUrl()}${path}`, {
     method,
     headers,
@@ -77,5 +77,3 @@ export async function pingWorker(url) {
     return false;
   }
 }
-
-export { request };

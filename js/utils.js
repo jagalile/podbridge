@@ -61,7 +61,7 @@ const WEEK_MS = 7 * DAY_MS, MONTH_MS = 30 * DAY_MS, YEAR_MS = 365 * DAY_MS;
  * No hay ninguna fecha exacta en el HTML de iVoox, solo este texto — así
  * que esto es necesariamente una aproximación, pensada para poder
  * ordenar episodios de programas distintos por fecha (ver
- * renderFavoriteEpisodes en main.js), no para saber el día exacto.
+ * loadFavoriteEpisodes en main.js), no para saber el día exacto.
  * Devuelve 0 (el valor más antiguo posible) si el texto no se reconoce,
  * para que ese episodio caiga al final en vez de romper el orden.
  */

@@ -223,7 +223,10 @@ async function getOriginalsProgramIds() {
     while ((m = idRe.exec(html))) ids.add(m[1]);
   } catch {
     // Si el catálogo falla, seguimos sin marcar Originals en vez de romper
-    // la búsqueda entera por esto.
+    // la búsqueda entera por esto — y sin cachear, para que el siguiente
+    // intento vuelva a probar en vez de arrastrar un fallo puntual
+    // durante las 6 horas de TTL.
+    return ids;
   }
 
   const cacheResponse = new Response(JSON.stringify([...ids]), {
@@ -424,7 +427,7 @@ function parseProgramInfo(html, programUrl, originalsIds) {
 // aunque el episodio existiera). Se quitó a favor de un listado de
 // episodios de los programas favoritos, ordenado por fecha, que resuelve
 // mejor el caso real de uso ("¿hay algo nuevo en lo que sigo?") — ver
-// renderFavoriteEpisodes() en main.js.
+// loadFavoriteEpisodes() en main.js.
 // ---------------------------------------------------------------------------
 
 async function handleSearch(url, env) {
@@ -880,8 +883,9 @@ async function deleteUploadedFile(uuid, token) {
  * autorizada — la respuesta es pequeña en los dos sentidos, así que no
  * hay ningún cuerpo grande que le pase por delante al límite de
  * Cloudflare. El streaming real de iVoox a Pocket Casts lo hace después
- * el servicio de relevo externo (ver /relay-service), directamente desde
- * el navegador, con la URL que devuelve esta función.
+ * el servicio de relevo externo (ver /relay-service), de servidor a
+ * servidor con la URL que devuelve esta función: el navegador solo le
+ * manda esa URL, el audio nunca le pasa por delante.
  */
 async function handlePocketCastsUploadEpisodeInit(request, env) {
   const authHeader = request.headers.get("Authorization") || "";
@@ -956,8 +960,9 @@ async function handlePocketCastsUploadEpisodeCancel(request, env) {
 
 /**
  * Sube la portada de un episodio ya subido a Archivos. Es un segundo paso
- * independiente, atado al mismo `uuid` que devolvió /pocketcasts/upload —
- * por eso hay que pasarlo por query string aquí. Si esto falla, no se
+ * independiente, atado al mismo `uuid` que devolvió
+ * /pocketcasts/upload-episode (o -init) — por eso hay que pasarlo por
+ * query string aquí. Si esto falla, no se
  * reintenta ni bloquea nada: el audio ya está subido, la portada es solo
  * un extra (Pocket Casts pondrá su icono por defecto).
  */

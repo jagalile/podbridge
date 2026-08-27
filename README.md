@@ -6,9 +6,9 @@ sin pasos intermedios.**
 
 PodBridge es una herramienta personal, pensada para gente que sigue
 podcasts en iVoox pero prefiere Pocket Casts como reproductor. Busca un
-programa o un episodio, pulsa un botón y el audio (y su portada) aparecen
-en tus Archivos de Pocket Casts, listos para escuchar en cualquier
-dispositivo.
+programa, elige el episodio que quieras y pulsa un botón: el audio (y su
+portada) aparecen en tus Archivos de Pocket Casts, listos para escuchar
+en cualquier dispositivo.
 
 No es una app oficial de iVoox ni de Pocket Casts, ni tiene afiliación con
 ninguna de las dos.
