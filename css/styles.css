@@ -612,7 +612,8 @@ code {
   font-weight: 400;
 }
 .field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-.field-row { display: flex; align-items: center; gap: 12px; }
+.field-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.field-row + .field-row { margin-top: 10px; }
 
 /* Botón del ojo para mostrar/ocultar contraseñas y secretos. */
 .field-input-wrap { position: relative; }
@@ -650,7 +651,6 @@ code {
    del teclado, así que funciona igual en cualquier WebView. */
 #export-fallback-toggle { margin-top: 10px; }
 .export-fallback, .import-paste-box { margin-top: 10px; }
-.import-paste-box .field-row { margin-top: 0; }
 .data-io-textarea {
   width: 100%;
   padding: 10px 12px;
