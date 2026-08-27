@@ -334,6 +334,30 @@ $("#export-fallback-copy").addEventListener("click", async () => {
   }
 });
 
+/** Aplica un JSON de importación ya parseado — común a las tres vías
+ * (archivo, portapapeles leído por JS, o pegado a mano) para no repetir
+ * tres veces la misma lógica de después. Puede lanzar (JSON inválido,
+ * importData rechazándolo), lo gestiona cada vía por separado porque el
+ * mensaje de error que tiene sentido mostrar no es el mismo en las tres. */
+function applyImportedData(data) {
+  const result = importData(data, { merge: true });
+  const settingsApplied = [
+    result.proxyUrlApplied && "la URL del Worker",
+    result.relayUrlApplied && "el relevo",
+    result.relaySecretApplied && "su secreto",
+  ].filter(Boolean);
+  toast(
+    `Importado: ${result.favorites} favoritos, ${result.uploads} episodios en el historial` +
+      (settingsApplied.length ? ` y ${settingsApplied.join(", ")}` : ""),
+    "success",
+  );
+  syncSettingsFields(); // el panel de ajustes puede seguir abierto con los campos desactualizados
+  if (result.proxyUrlApplied) checkWorker();
+  if (result.relayUrlApplied) checkRelay();
+  recordDataSync("import");
+  render();
+}
+
 const importInput = $("#import-data-input");
 $("#import-data-btn").addEventListener("click", () => importInput.click());
 
@@ -341,30 +365,60 @@ importInput.addEventListener("change", async () => {
   const file = importInput.files[0];
   importInput.value = ""; // permite volver a elegir el mismo archivo después
   if (!file) return;
-
   try {
-    const text = await file.text();
-    const data = JSON.parse(text);
-    const result = importData(data, { merge: true });
-
-    const settingsApplied = [
-      result.proxyUrlApplied && "la URL del Worker",
-      result.relayUrlApplied && "el relevo",
-      result.relaySecretApplied && "su secreto",
-    ].filter(Boolean);
-    toast(
-      `Importado: ${result.favorites} favoritos, ${result.uploads} episodios en el historial` +
-        (settingsApplied.length ? ` y ${settingsApplied.join(", ")}` : ""),
-      "success",
-    );
-    syncSettingsFields(); // el panel de ajustes puede seguir abierto con los campos desactualizados
-    if (result.proxyUrlApplied) checkWorker();
-    if (result.relayUrlApplied) checkRelay();
-    recordDataSync("import");
-    render();
+    applyImportedData(JSON.parse(await file.text()));
   } catch (err) {
     toast(`No se ha podido importar el archivo: ${err.message}`, "error");
   }
+});
+
+// ---------------------------------------------------------------------------
+// Importar desde el portapapeles — para cuando elegir un archivo no es
+// cómodo, o directamente no funciona (los mismos WebViews donde falla la
+// descarga al exportar, ver downloadExportedFile más arriba).
+// ---------------------------------------------------------------------------
+function openImportPasteBox() {
+  $("#import-paste-box").hidden = false;
+  $("#import-paste-text").value = "";
+  $("#import-paste-text").focus();
+}
+
+$("#import-clipboard-btn").addEventListener("click", async () => {
+  let text;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    // Sin permiso o navigator.clipboard no disponible en este navegador o
+    // WebView: se ofrece pegar a mano en su lugar — el pegado nativo del
+    // teclado siempre funciona, a diferencia de leer el portapapeles por JS.
+    openImportPasteBox();
+    return;
+  }
+  if (!text.trim()) {
+    toast("El portapapeles está vacío.", "error");
+    openImportPasteBox();
+    return;
+  }
+  try {
+    applyImportedData(JSON.parse(text));
+  } catch (err) {
+    toast(`El portapapeles no tiene datos válidos: ${err.message}`, "error");
+    openImportPasteBox();
+  }
+});
+
+$("#import-paste-submit").addEventListener("click", () => {
+  try {
+    applyImportedData(JSON.parse($("#import-paste-text").value));
+    $("#import-paste-box").hidden = true;
+  } catch (err) {
+    toast(`No se ha podido importar: ${err.message}`, "error");
+  }
+});
+
+$("#import-paste-cancel").addEventListener("click", () => {
+  $("#import-paste-box").hidden = true;
+  $("#import-paste-text").value = "";
 });
 
 // ---------------------------------------------------------------------------

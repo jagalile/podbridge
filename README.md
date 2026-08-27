@@ -115,7 +115,11 @@ ninguna de las dos.
 - Exportar/importar favoritos, historial, la URL del Worker y la
   configuración del relevo (URL y secreto) como un archivo JSON, para
   hacer copia de seguridad o pasarlos a otro navegador — nunca incluye
-  contraseñas ni el token de Pocket Casts.
+  contraseñas ni el token de Pocket Casts. También se puede importar
+  desde el portapapeles o pegando el JSON a mano, y si la descarga del
+  archivo no funciona (pasa en algunos WebViews que envuelven la web
+  como app, como Hermit) queda siempre disponible copiarlo a mano como
+  alternativa.
 - Junto a esos botones, un aviso sencillo de cuándo fue la última
   exportación y la última importación (cada una por separado, si ha
   habido) y si ha habido cambios desde entonces — en un color más

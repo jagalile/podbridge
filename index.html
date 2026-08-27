@@ -269,11 +269,22 @@
           <button id="import-data-btn" class="btn btn-secondary btn-sm" type="button">Importar datos</button>
           <input id="import-data-input" type="file" accept="application/json" hidden />
         </div>
+        <div class="field-row">
+          <button id="import-clipboard-btn" class="btn btn-secondary btn-sm" type="button">Importar del portapapeles</button>
+        </div>
         <p class="field-status" id="data-io-status"></p>
+        <div class="import-paste-box" id="import-paste-box" hidden>
+          <p class="hint">Pega aquí el JSON exportado (mantén pulsado el cuadro y elige "Pegar").</p>
+          <textarea id="import-paste-text" class="data-io-textarea" rows="6"></textarea>
+          <div class="field-row">
+            <button id="import-paste-submit" class="btn btn-secondary btn-sm" type="button">Importar</button>
+            <button id="import-paste-cancel" class="btn btn-secondary btn-sm" type="button">Cancelar</button>
+          </div>
+        </div>
         <button id="export-fallback-toggle" class="read-more-btn" type="button" hidden>¿No se ha descargado nada?</button>
         <div class="export-fallback" id="export-fallback" hidden>
           <p class="hint">Pasa en algunas apps que abren la web como si fuera una app (p. ej. Hermit): ahí la descarga no funciona. Copia este texto y pégalo en una nota o archivo de texto para guardarlo.</p>
-          <textarea id="export-fallback-text" class="export-fallback-text" readonly rows="6"></textarea>
+          <textarea id="export-fallback-text" class="data-io-textarea" readonly rows="6"></textarea>
           <button id="export-fallback-copy" class="btn btn-secondary btn-sm" type="button">Copiar al portapapeles</button>
         </div>
       </section>

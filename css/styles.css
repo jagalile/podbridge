@@ -645,10 +645,13 @@ code {
 /* Alternativa manual a la descarga (ver downloadExportedFile en main.js):
    algunos WebViews que envuelven la web como app (Hermit y similares) no
    descargan blobs ni dan ningún error al fallar — este bloque es la vía
-   de escape que siempre funciona, copiar y pegar a mano. */
+   de escape que siempre funciona, copiar y pegar a mano. Lo mismo en
+   sentido contrario para importar: pegar en un textarea es pegado nativo
+   del teclado, así que funciona igual en cualquier WebView. */
 #export-fallback-toggle { margin-top: 10px; }
-.export-fallback { margin-top: 10px; }
-.export-fallback-text {
+.export-fallback, .import-paste-box { margin-top: 10px; }
+.import-paste-box .field-row { margin-top: 0; }
+.data-io-textarea {
   width: 100%;
   padding: 10px 12px;
   border-radius: var(--radius-s);
