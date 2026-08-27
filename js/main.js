@@ -299,12 +299,39 @@ async function downloadExportedFile(filename, json) {
 $("#export-data").addEventListener("click", async () => {
   const data = exportData();
   const filename = `podbridge-datos-${new Date().toISOString().slice(0, 10)}.json`;
-  const ok = await downloadExportedFile(filename, JSON.stringify(data, null, 2));
+  const json = JSON.stringify(data, null, 2);
+  const ok = await downloadExportedFile(filename, json);
   if (!ok) return;
   $("#data-io-status").textContent = "Exportado ✓";
   setTimeout(() => { $("#data-io-status").textContent = ""; }, 2500);
   recordDataSync("export");
   renderDataSyncStatus();
+
+  // No hay forma de saber desde aquí si la descarga/el share realmente
+  // llegó a algún sitio (un <a download> ignorado en silencio no da
+  // ningún error) — así que se deja siempre a mano esta vía alternativa
+  // que no depende de ninguna API del navegador: copiar y pegar.
+  $("#export-fallback-text").value = json;
+  $("#export-fallback-toggle").hidden = false;
+});
+
+$("#export-fallback-toggle").addEventListener("click", () => {
+  const box = $("#export-fallback");
+  box.hidden = !box.hidden;
+});
+
+$("#export-fallback-copy").addEventListener("click", async () => {
+  const textarea = $("#export-fallback-text");
+  try {
+    await navigator.clipboard.writeText(textarea.value);
+    toast("Copiado al portapapeles", "success");
+  } catch {
+    // Clipboard API no disponible o sin permiso en este WebView: selección
+    // manual del texto, que es el único mecanismo que funciona siempre.
+    textarea.focus();
+    textarea.select();
+    toast("Selecciona y copia el texto a mano (Ctrl/⌘+C)", "info");
+  }
 });
 
 const importInput = $("#import-data-input");

@@ -642,6 +642,26 @@ code {
 .data-sync-status { font-size: 12.5px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.5; }
 .data-sync-status.is-attention { color: var(--exclusive); font-weight: 600; }
 
+/* Alternativa manual a la descarga (ver downloadExportedFile en main.js):
+   algunos WebViews que envuelven la web como app (Hermit y similares) no
+   descargan blobs ni dan ningún error al fallar — este bloque es la vía
+   de escape que siempre funciona, copiar y pegar a mano. */
+#export-fallback-toggle { margin-top: 10px; }
+.export-fallback { margin-top: 10px; }
+.export-fallback-text {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+  margin-bottom: 10px;
+}
+
 /* Ficha de cuenta conectada: antes era una fila que envolvía mal con
    emails largos (el botón "Desconectar" quedaba flotando junto a la
    primera línea del email). Ahora es su propio bloque con el email en

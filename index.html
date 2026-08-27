@@ -270,6 +270,12 @@
           <input id="import-data-input" type="file" accept="application/json" hidden />
         </div>
         <p class="field-status" id="data-io-status"></p>
+        <button id="export-fallback-toggle" class="read-more-btn" type="button" hidden>¿No se ha descargado nada?</button>
+        <div class="export-fallback" id="export-fallback" hidden>
+          <p class="hint">Pasa en algunas apps que abren la web como si fuera una app (p. ej. Hermit): ahí la descarga no funciona. Copia este texto y pégalo en una nota o archivo de texto para guardarlo.</p>
+          <textarea id="export-fallback-text" class="export-fallback-text" readonly rows="6"></textarea>
+          <button id="export-fallback-copy" class="btn btn-secondary btn-sm" type="button">Copiar al portapapeles</button>
+        </div>
       </section>
     </div>
   </aside>
