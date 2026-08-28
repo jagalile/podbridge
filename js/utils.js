@@ -92,6 +92,26 @@ export function parseRelativeDate(text) {
  */
 export const LARGE_EPISODE_BYTES = 100 * 1024 * 1024;
 
+// Bitrate mínimo asumido cuando no se conoce el tamaño real (el HEAD del
+// Worker a iVoox falló, o la CDN no devolvió Content-Length — pasa sobre
+// todo con episodios muy largos). 15 KB/s (~123 kbps) es el extremo bajo
+// de lo observado en episodios reales (~50-60 MB/hora). Se usa solo para
+// decidir la vía de subida, nunca para lo que se enseña en pantalla —
+// mejor pasarse de precavido y mandar por el relevo un episodio que en
+// realidad cabía por el Worker, que al revés: intentarlo por el Worker,
+// descargarlo entero de iVoox y que la subida falle con un 413 a media
+// subida por haber asumido "sin tamaño = pequeño".
+const MIN_ASSUMED_BYTES_PER_SECOND = 15 * 1024;
+
+/** true si el episodio hay que mandarlo por el relevo en vez de por el
+ * Worker directo — por tamaño conocido, o si no hay tamaño, estimado a
+ * partir de la duración (ver MIN_ASSUMED_BYTES_PER_SECOND). */
+export function isLargeEpisode(episode) {
+  if (episode.sizeBytes) return episode.sizeBytes > LARGE_EPISODE_BYTES;
+  if (episode.duration) return episode.duration * MIN_ASSUMED_BYTES_PER_SECOND > LARGE_EPISODE_BYTES;
+  return false; // ni tamaño ni duración: no hay con qué estimar, se intenta por la vía normal
+}
+
 export function debounce(fn, ms) {
   let t;
   return (...args) => {

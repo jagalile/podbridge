@@ -1,6 +1,6 @@
 // Orquesta el flujo completo por episodio. El audio ya NO pasa por el
 // navegador: se sube de servidor a servidor, por una de estas dos vías
-// según el tamaño del episodio (ver LARGE_EPISODE_BYTES):
+// según el tamaño del episodio (ver isLargeEpisode() en utils.js):
 //
 //   - Episodios normales (hasta ~100 MB): el propio Worker de Cloudflare
 //     lo descarga de iVoox y lo sube a Pocket Casts (uploadEpisodeFromIvoox).
@@ -12,6 +12,12 @@
 //     (requestEpisodeUploadInit) y es un servicio aparte, fuera de
 //     Cloudflare (relayUpload, ver api/relay.js), quien hace el streaming
 //     real de iVoox a Pocket Casts.
+//
+// El tamaño no siempre se conoce (el Worker lo obtiene con un HEAD a
+// iVoox al listar episodios, y a veces falla o la CDN no da
+// Content-Length — típico en episodios muy largos, justo los que más
+// importa clasificar bien). Sin tamaño, isLargeEpisode() estima a partir
+// de la duración en vez de asumir "pequeño" por defecto.
 //
 // Solo la portada, que siempre es pequeña, se descarga al navegador y se
 // sube desde aquí en los dos casos.
@@ -27,7 +33,7 @@ import { state, setJob } from "./state.js";
 import { imageProxyUrl } from "./api/ivoox.js";
 import { uploadEpisodeFromIvoox, uploadImage, requestEpisodeUploadInit, cancelEpisodeUpload } from "./api/pocketcasts.js";
 import { relayUpload } from "./api/relay.js";
-import { LARGE_EPISODE_BYTES } from "./utils.js";
+import { isLargeEpisode } from "./utils.js";
 import { noteJobStarted, noteJobEnded } from "./wakelock.js";
 
 // Reparto del progreso 0..1 mostrado en la UI según haya o no portada que
@@ -90,7 +96,7 @@ setInterval(() => {
 
 export async function runEpisodeJob(episode) {
   const id = episode.id;
-  const isLarge = (episode.sizeBytes || 0) > LARGE_EPISODE_BYTES;
+  const isLarge = isLargeEpisode(episode);
 
   if (episode.isExclusive) {
     setJob(id, { status: "error", error: "Episodio exclusivo: iVoox no permite descargarlo." });

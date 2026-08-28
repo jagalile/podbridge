@@ -441,7 +441,14 @@ porque el corte pasa en la red de Cloudflare, no en el código.
 
 Por eso, para episodios de más de `LARGE_EPISODE_BYTES` (100 MB, en
 `js/utils.js`) el audio se sube por una vía distinta que no pasa por
-Cloudflare en ningún momento:
+Cloudflare en ningún momento. Esa decisión se toma con `isLargeEpisode()`
+(también en `js/utils.js`): normalmente por el tamaño exacto que el
+Worker obtuvo con un `HEAD` al listar el programa, pero si ese `HEAD`
+falla o la CDN no da `Content-Length` — pasa más a menudo justo en
+episodios muy largos, los que más importa clasificar bien — se estima a
+partir de la duración en vez de asumir "sin tamaño = pequeño", que es lo
+que hacía antes y colaba episodios grandes por la vía del Worker con un
+413 a media subida.
 
 1. El navegador le pide al Worker una URL de subida ya autorizada
    (`POST /pocketcasts/upload-episode-init`) — una petición pequeña,
