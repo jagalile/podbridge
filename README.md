@@ -1,5 +1,8 @@
 # PodBridge
 
+[![Deploy](https://img.shields.io/github/actions/workflow/status/jagalile/podbridge/deploy.yml?branch=main&label=deploy&style=flat-square)](https://github.com/jagalile/podbridge/actions/workflows/deploy.yml)
+[![Licencia](https://img.shields.io/github/license/jagalile/podbridge?style=flat-square)](LICENSE)
+
 **Busca programas y episodios de iVoox, y súbelos directamente a tus
 Archivos de Pocket Casts — sin descargar nada a mano, sin conversiones,
 sin pasos intermedios.**
